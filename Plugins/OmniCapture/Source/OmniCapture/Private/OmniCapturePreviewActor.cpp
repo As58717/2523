@@ -102,7 +102,7 @@ void AOmniCapturePreviewActor::ResizePreviewTexture(const FIntPoint& Size)
     PreviewTexture->MipGenSettings = TMGS_NoMipmaps;
     PreviewTexture->CompressionSettings = TC_HDR;
     PreviewTexture->SRGB = true;
-    PreviewTexture->UpdateResourceImmediate();
+    PreviewTexture->UpdateResource();
 
     ApplyTexture(PreviewTexture);
 }

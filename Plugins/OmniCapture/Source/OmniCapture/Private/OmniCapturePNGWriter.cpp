@@ -1,22 +1,11 @@
 #include "OmniCapturePNGWriter.h"
+
 #include "ImageWriteQueue.h"
-#include "ImageWriteTypes.h"
 #include "ImageWriteTask.h"
+#include "ImageWriteTypes.h"
 
-#include "Modules/ModuleManager.h"
-#include "Misc/Paths.h"
 #include "HAL/FileManager.h"
-
-// 检测模块头是否存在
-#if __has_include("IImageWriteQueueModule.h")
-#include "IImageWriteQueueModule.h"
-#define OMNI_HAS_IIMAGEWRITEQUEUEMODULE 1
-#elif __has_include("ImageWriteQueue/Public/IImageWriteQueueModule.h")
-#include "ImageWriteQueue/Public/IImageWriteQueueModule.h"
-#define OMNI_HAS_IIMAGEWRITEQUEUEMODULE 1
-#else
-#define OMNI_HAS_IIMAGEWRITEQUEUEMODULE 0
-#endif
+#include "Misc/Paths.h"
 
 FOmniCapturePNGWriter::FOmniCapturePNGWriter() {}
 FOmniCapturePNGWriter::~FOmniCapturePNGWriter() { Flush(); }
@@ -28,22 +17,15 @@ void FOmniCapturePNGWriter::Initialize(const FOmniCaptureSettings& Settings, con
     OutputDirectory = FPaths::ConvertRelativePathToFull(OutputDirectory);
     IFileManager::Get().MakeDirectory(*OutputDirectory, true);
 
-    // 使用模块接口加载队列
-    if (OMNI_HAS_IIMAGEWRITEQUEUEMODULE)
-    {
-        ImageWriteQueue = &FModuleManager::LoadModuleChecked<IImageWriteQueueModule>(TEXT("ImageWriteQueue")).GetImageWriteQueue();
-    }
-    else
-    {
-        // 备用队列
-        static FImageWriteQueue LocalQueue;
-        ImageWriteQueue = &LocalQueue;
-    }
+    ImageWriteQueue = MakeUnique<FImageWriteQueue>();
 }
 
 void FOmniCapturePNGWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, const FString& FrameFileName)
 {
-    if (!ImageWriteQueue || !Frame.IsValid()) { return; }
+    if (!ImageWriteQueue.IsValid() || !Frame.IsValid())
+    {
+        return;
+    }
 
     TUniquePtr<FImageWriteTask> Task = MakeUnique<FImageWriteTask>();
     Task->Format = EImageFormat::PNG;
@@ -51,7 +33,6 @@ void FOmniCapturePNGWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, 
     Task->CompressionQuality = static_cast<int32>(EImageCompressionQuality::Uncompressed);
     Task->bOverwriteFile = true;
     Task->PixelData = MoveTemp(Frame->PixelData);
-    Task->bSupports16Bit = Frame->bLinearColor;
 
     ImageWriteQueue->Enqueue(MoveTemp(Task));
 
@@ -61,7 +42,11 @@ void FOmniCapturePNGWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, 
 
 void FOmniCapturePNGWriter::Flush()
 {
-    if (ImageWriteQueue) { ImageWriteQueue->Flush(); ImageWriteQueue = nullptr; }
+    if (ImageWriteQueue.IsValid())
+    {
+        ImageWriteQueue->Flush();
+        ImageWriteQueue.Reset();
+    }
 }
 
 TArray<FOmniCaptureFrameMetadata> FOmniCapturePNGWriter::ConsumeCapturedFrames()
@@ -71,4 +56,3 @@ TArray<FOmniCaptureFrameMetadata> FOmniCapturePNGWriter::ConsumeCapturedFrames()
     CapturedMetadata.Reset();
     return Result;
 }
-

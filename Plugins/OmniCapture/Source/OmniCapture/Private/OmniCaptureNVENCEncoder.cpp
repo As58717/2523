@@ -68,7 +68,12 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
 
     Caps.AdapterName = FPlatformMisc::GetPrimaryGPUBrand();
 #if PLATFORM_WINDOWS
-    const FGPUDriverInfo DriverInfo = FPlatformMisc::GetGPUDriverInfo(FGPUDriverInfo::EDeviceType::Primary);
+    FString DeviceDescription;
+    if (GDynamicRHI)
+    {
+        DeviceDescription = GDynamicRHI->GetAdapterName();
+    }
+    const FGPUDriverInfo DriverInfo = FPlatformMisc::GetGPUDriverInfo(DeviceDescription);
     Caps.DriverVersion = DriverInfo.DriverVersion;
 #endif
 

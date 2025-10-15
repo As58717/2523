@@ -794,7 +794,7 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
 
     uint64 FreeBytes = 0;
     uint64 TotalBytes = 0;
-    if (IFileManager::Get().GetDiskFreeSpace(*ActiveSettings.OutputDirectory, FreeBytes, TotalBytes))
+    if (FPlatformMisc::GetDiskTotalAndFreeSpace(*ActiveSettings.OutputDirectory, TotalBytes, FreeBytes))
     {
         const uint64 MinFreeBytes = static_cast<uint64>(FMath::Max(0, ActiveSettings.MinimumFreeDiskSpaceGB)) * 1024ull * 1024ull * 1024ull;
         if (MinFreeBytes > 0 && FreeBytes < MinFreeBytes)
@@ -995,12 +995,9 @@ void UOmniCaptureSubsystem::CaptureFrame()
             continue;
         }
 
-        if (FRHITexture* PlaneTexture = Plane->GetRenderTargetItem().ShaderResourceTexture)
+        if (FRHITexture* PlaneTexture = Plane->GetRHI())
         {
-            if (FTexture2DRHIRef TextureRef = PlaneTexture->GetTexture2D())
-            {
-                Frame->EncoderTextures.Add(TextureRef);
-            }
+            Frame->EncoderTextures.Add(PlaneTexture);
         }
     }
     if (Frame->EncoderTextures.Num() == 0 && Frame->Texture.IsValid())
@@ -1265,7 +1262,7 @@ void UOmniCaptureSubsystem::UpdateRuntimeWarnings()
         uint64 FreeBytes = 0;
         uint64 TotalBytes = 0;
         const uint64 ThresholdBytes = static_cast<uint64>(ActiveSettings.MinimumFreeDiskSpaceGB) * 1024ull * 1024ull * 1024ull;
-        if (ThresholdBytes > 0 && IFileManager::Get().GetDiskFreeSpace(*ActiveSettings.OutputDirectory, FreeBytes, TotalBytes))
+        if (ThresholdBytes > 0 && FPlatformMisc::GetDiskTotalAndFreeSpace(*ActiveSettings.OutputDirectory, TotalBytes, FreeBytes))
         {
             if (FreeBytes < ThresholdBytes)
             {

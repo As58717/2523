@@ -44,7 +44,7 @@ bool FOmniCaptureAudioRecorder::Initialize(UWorld* InWorld, const FOmniCaptureSe
 {
     WorldPtr = InWorld;
     Gain = Settings.AudioGain;
-    +TargetSubmix = Settings.SubmixToRecord.Get();
+    TargetSubmix = Settings.SubmixToRecord.Get();
     if (!TargetSubmix.IsValid() && Settings.SubmixToRecord.ToSoftObjectPath().IsValid())
     {
         if (USoundSubmix* LoadedSubmix = Cast<USoundSubmix>(Settings.SubmixToRecord.LoadSynchronous()))
