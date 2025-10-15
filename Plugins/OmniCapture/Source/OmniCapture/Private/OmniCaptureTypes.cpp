@@ -1,54 +1,54 @@
 #include "OmniCaptureTypes.h"
-#include "ImageCore/Public/ImagePixelData.h"  // ÒıÈë ImagePixelData
+#include "ImagePixelData.h"  //  ImagePixelData
 
-// Ê¾Àı£º´´½¨Ò»¸ö FImagePixelData ¶ÔÏó
+// ç¤ºä¾‹ï¼šåˆ›å»ºä¸€ä¸ª FImagePixelData å¯¹è±¡
 TUniquePtr<FImagePixelData> CreateImagePixelData(const FIntPoint& Size)
 {
-    // ´´½¨Ò»¸ö FImagePixelData ¶ÔÏó
+    // åˆ›å»ºä¸€ä¸ª FImagePixelData å¯¹è±¡
     TUniquePtr<FImagePixelData> PixelData = MakeUnique<FImagePixelData>(Size);
     if (!PixelData)
     {
         return nullptr;
     }
 
-    // ³õÊ¼»¯Êı¾İ£¨ÀıÈçÈ«Í¸Ã÷£©
+    // åˆå§‹åŒ–æ•°æ®ï¼ˆä¾‹å¦‚å…¨é€æ˜ï¼‰
     for (int32 i = 0; i < Size.X * Size.Y; ++i)
     {
-        PixelData->Pixels[i] = FColor::Transparent;  // È«Í¸Ã÷
+        PixelData->Pixels[i] = FColor::Transparent;  // å…¨é€æ˜
     }
 
     return PixelData;
 }
 
-// Ê¾Àı£º×ª»»ÏßĞÔÑÕÉ«µ½ FImagePixelData
+// ç¤ºä¾‹ï¼šè½¬æ¢çº¿æ€§é¢œè‰²åˆ° FImagePixelData
 TUniquePtr<FImagePixelData> ConvertLinearToImagePixelData(const TArray<FLinearColor>& LinearColors, const FIntPoint& Size)
 {
-    // ´´½¨Ò»¸ö FImagePixelData ¶ÔÏó
+    // åˆ›å»ºä¸€ä¸ª FImagePixelData å¯¹è±¡
     TUniquePtr<FImagePixelData> PixelData = MakeUnique<FImagePixelData>(Size);
     if (!PixelData)
     {
         return nullptr;
     }
 
-    // ½«ÏßĞÔÑÕÉ«×ª»»Îª FColor ´æÈë FImagePixelData
+    // å°†çº¿æ€§é¢œè‰²è½¬æ¢ä¸º FColor å­˜å…¥ FImagePixelData
     for (int32 i = 0; i < Size.X * Size.Y; ++i)
     {
-        PixelData->Pixels[i] = LinearColors[i].ToFColor(true);  // ×ª»»Îª FColor
+        PixelData->Pixels[i] = LinearColors[i].ToFColor(true);  // è½¬æ¢ä¸º FColor
     }
 
     return PixelData;
 }
 
-// Ê¾Àı£º´ÓÏñËØÊı¾İÖĞ¶ÁÈ¡ÌØ¶¨ÑÕÉ«
+// ç¤ºä¾‹ï¼šä»åƒç´ æ•°æ®ä¸­è¯»å–ç‰¹å®šé¢œè‰²
 FLinearColor ReadPixelFromImageData(const TUniquePtr<FImagePixelData>& PixelData, int32 X, int32 Y)
 {
     if (!PixelData || X < 0 || Y < 0 || X >= PixelData->Size.X || Y >= PixelData->Size.Y)
     {
-        return FLinearColor::Black;  // Èç¹ûÎŞĞ§·µ»ØºÚÉ«
+        return FLinearColor::Black;  // å¦‚æœæ— æ•ˆè¿”å›é»‘è‰²
     }
 
-    return PixelData->Pixels[Y * PixelData->Size.X + X].ReinterpretAsLinear();  // ×ª»»ÎªÏßĞÔÑÕÉ«
+    return PixelData->Pixels[Y * PixelData->Size.X + X].ReinterpretAsLinear();  // è½¬æ¢ä¸ºçº¿æ€§é¢œè‰²
 }
 
-// ÆäËûÓëÍ¼ÏñÏà¹ØµÄ¹¦ÄÜÊµÏÖ¿ÉÒÔ¼ÌĞøÔÚÕâÀï²¹³ä
+// å…¶ä»–ä¸å›¾åƒç›¸å…³çš„åŠŸèƒ½å®ç°å¯ä»¥ç»§ç»­åœ¨è¿™é‡Œè¡¥å……
 

@@ -34,7 +34,7 @@ void FOmniCaptureEditorModule::ShutdownModule()
     {
         if (MenuRegistrationHandle.IsValid())
         {
-            ToolMenus->UnregisterStartupCallback(MenuRegistrationHandle);
+            UToolMenus::UnregisterStartupCallback(MenuRegistrationHandle);
         }
         ToolMenus->UnregisterOwner(this);
     }

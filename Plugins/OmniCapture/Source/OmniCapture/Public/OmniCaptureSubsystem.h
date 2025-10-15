@@ -2,15 +2,15 @@
 
 #include "OmniCaptureTypes.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "OmniCaptureRingBuffer.h"
+#include "OmniCapturePNGWriter.h"
+#include "OmniCaptureAudioRecorder.h"
+#include "OmniCaptureNVENCEncoder.h"
+#include "OmniCaptureMuxer.h"
 #include "OmniCaptureSubsystem.generated.h"
 
 class AOmniCaptureRigActor;
 class AOmniCaptureDirectorActor;
-class FOmniCaptureRingBuffer;
-class FOmniCapturePNGWriter;
-class FOmniCaptureAudioRecorder;
-class FOmniCaptureNVENCEncoder;
-class FOmniCaptureMuxer;
 class AOmniCapturePreviewActor;
 
 struct FOmniCaptureSegmentRecord
