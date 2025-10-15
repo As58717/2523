@@ -13,7 +13,7 @@ struct FOmniCaptureEquirectResult
     bool bIsLinear = false;
     bool bUsedCPUFallback = false;
     TRefCountPtr<IPooledRenderTarget> OutputTarget;
-    FTexture2DRHIRef Texture;
+    FTextureRHIRef Texture;
     FGPUFenceRHIRef ReadyFence;
     TArray<TRefCountPtr<IPooledRenderTarget>> EncoderPlanes;
 };

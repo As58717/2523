@@ -53,5 +53,5 @@ private:
     TSharedPtr<STextBlock> OutputDirectoryTextBlock;
     TArray<TSharedPtr<FString>> WarningItems;
     TSharedPtr<SListView<TSharedPtr<FString>>> WarningListView;
-    FDelegateHandle ActiveTimerHandle;
+    TWeakPtr<FActiveTimerHandle> ActiveTimerHandle;
 };

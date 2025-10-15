@@ -30,13 +30,13 @@ void FOmniCaptureEditorModule::StartupModule()
 
 void FOmniCaptureEditorModule::ShutdownModule()
 {
-    if (UToolMenus::IsAvailable())
+    if (UToolMenus* ToolMenus = UToolMenus::TryGet())
     {
         if (MenuRegistrationHandle.IsValid())
         {
-            UToolMenus::UnregisterStartupCallback(MenuRegistrationHandle);
+            ToolMenus->UnregisterStartupCallback(MenuRegistrationHandle);
         }
-        UToolMenus::UnregisterOwner(this);
+        ToolMenus->UnregisterOwner(this);
     }
 
     MenuRegistrationHandle = FDelegateHandle();

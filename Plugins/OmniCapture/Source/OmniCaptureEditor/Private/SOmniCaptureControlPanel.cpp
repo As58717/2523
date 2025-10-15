@@ -318,7 +318,7 @@ FReply SOmniCaptureControlPanel::OnBrowseOutputDirectory()
         DefaultPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("OmniCaptures"));
     }
 
-    void* ParentWindowHandle = nullptr;
+    const void* ParentWindowHandle = nullptr;
     if (FSlateApplication::IsInitialized())
     {
         ParentWindowHandle = FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr);
@@ -326,7 +326,7 @@ FReply SOmniCaptureControlPanel::OnBrowseOutputDirectory()
 
     FString ChosenDirectory;
     const bool bOpened = DesktopPlatform->OpenDirectoryDialog(
-        ParentWindowHandle,
+        const_cast<void*>(ParentWindowHandle),
         TEXT("Choose Capture Output Folder"),
         DefaultPath,
         ChosenDirectory

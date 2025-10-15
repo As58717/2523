@@ -408,7 +408,7 @@ namespace
         return OutputTexture;
     }
 
-    FRDGTextureRef BuildFaceArray(FRDGBuilder& GraphBuilder, const TArray<FTexture2DRHIRef, TInlineAllocator<6>>& Faces, int32 FaceResolution, const TCHAR* DebugName)
+    FRDGTextureRef BuildFaceArray(FRDGBuilder& GraphBuilder, const TArray<FTextureRHIRef, TInlineAllocator<6>>& Faces, int32 FaceResolution, const TCHAR* DebugName)
     {
         if (Faces.Num() == 0)
         {
@@ -437,7 +437,7 @@ namespace
         return ArrayTexture;
     }
 
-    void ConvertOnRenderThread(const FOmniCaptureSettings Settings, const TArray<FTexture2DRHIRef, TInlineAllocator<6>> LeftFaces, const TArray<FTexture2DRHIRef, TInlineAllocator<6>> RightFaces, FOmniCaptureEquirectResult& OutResult)
+    void ConvertOnRenderThread(const FOmniCaptureSettings Settings, const TArray<FTextureRHIRef, TInlineAllocator<6>> LeftFaces, const TArray<FTextureRHIRef, TInlineAllocator<6>> RightFaces, FOmniCaptureEquirectResult& OutResult)
     {
         const int32 FaceResolution = Settings.Resolution;
         const bool bStereo = Settings.Mode == EOmniCaptureMode::Stereo;
@@ -523,7 +523,10 @@ namespace
 
         OutResult.bUsedCPUFallback = false;
         OutResult.OutputTarget = ExtractedOutput;
-        OutResult.Texture = ExtractedOutput->GetRenderTargetItem().ShaderResourceTexture->GetTexture2D();
+        if (FRHITexture* OutputRHI = ExtractedOutput->GetRHI())
+        {
+            OutResult.Texture = OutputRHI;
+        }
         OutResult.Size = FIntPoint(OutputWidth, OutputHeight);
         OutResult.bIsLinear = bUseLinear;
 
@@ -539,12 +542,9 @@ namespace
         {
             OutResult.EncoderPlanes.Add(ExtractedBGRA);
 
-            if (FRHITexture* BGRATextureRHI = ExtractedBGRA->GetRenderTargetItem().ShaderResourceTexture)
+            if (FRHITexture* BGRATextureRHI = ExtractedBGRA->GetRHI())
             {
-                if (FTexture2DRHIRef BGRATextureRef = BGRATextureRHI->GetTexture2D())
-                {
-                    OutResult.Texture = BGRATextureRef;
-                }
+                OutResult.Texture = BGRATextureRHI;
             }
         }
 
@@ -558,7 +558,7 @@ namespace
             }
         }
 
-        FRHITexture* OutputTextureRHI = ExtractedOutput->GetRenderTargetItem().ShaderResourceTexture;
+        FRHITexture* OutputTextureRHI = ExtractedOutput->GetRHI();
         if (!OutputTextureRHI)
         {
             return;
@@ -722,8 +722,8 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
         return Result;
     }
 
-    TArray<FTexture2DRHIRef, TInlineAllocator<6>> LeftFaces;
-    TArray<FTexture2DRHIRef, TInlineAllocator<6>> RightFaces;
+    TArray<FTextureRHIRef, TInlineAllocator<6>> LeftFaces;
+    TArray<FTextureRHIRef, TInlineAllocator<6>> RightFaces;
 
     for (int32 FaceIndex = 0; FaceIndex < 6; ++FaceIndex)
     {

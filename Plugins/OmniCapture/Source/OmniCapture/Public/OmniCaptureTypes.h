@@ -3,6 +3,7 @@
 #include "RHI.h"
 #include "RHIResources.h"
 #include "ImageWriteTypes.h"
+#include "ImagePixelData.h"
 #include "OmniCaptureTypes.generated.h"
 
 UENUM(BlueprintType)

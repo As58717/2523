@@ -3,7 +3,7 @@
 #include "CoreMinimal.h"
 #include "OmniCaptureTypes.h"
 
-class IImageWriteQueue;
+class FImageWriteQueue;
 class FImageWriteTask;
 
 class OMNICAPTURE_API FOmniCapturePNGWriter
@@ -19,7 +19,7 @@ public:
     TArray<FOmniCaptureFrameMetadata> ConsumeCapturedFrames();
 
 private:
-    IImageWriteQueue* ImageWriteQueue = nullptr;
+    TUniquePtr<FImageWriteQueue> ImageWriteQueue;
     FString OutputDirectory;
     FString SequenceBaseName;
 
