@@ -9,6 +9,8 @@
 #include "Math/UnrealMathUtility.h"
 #include "PixelFormat.h"
 #include "RHI.h"
+#include "RHIAdapter.h"
+#include "GenericPlatform/GenericPlatformDriver.h"
 
 #if WITH_OMNI_NVENC && PLATFORM_WINDOWS
 #include "VideoEncoderFactory.h"
@@ -71,7 +73,9 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
     FString DeviceDescription;
     if (GDynamicRHI)
     {
-        DeviceDescription = GDynamicRHI->GetAdapterName();
+        FRHIAdapterInfo AdapterInfo;
+        GDynamicRHI->RHIGetAdapterInfo(AdapterInfo);
+        DeviceDescription = AdapterInfo.Description;
     }
     const FGPUDriverInfo DriverInfo = FPlatformMisc::GetGPUDriverInfo(DeviceDescription);
     Caps.DriverVersion = DriverInfo.DriverVersion;

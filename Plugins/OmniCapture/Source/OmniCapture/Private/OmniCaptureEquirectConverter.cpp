@@ -10,7 +10,11 @@
 #include "RHIGPUReadback.h"
 #include "RHIStaticStates.h"
 #include "RenderTargetPool.h"
+#if __has_include("RenderGraphUtils/Public/ComputeShaderUtils.h")
+#include "RenderGraphUtils/Public/ComputeShaderUtils.h"
+#else
 #include "ComputeShaderUtils.h"
+#endif
 #include "RHICommandList.h"
 #include "HAL/PlatformProcess.h"
 

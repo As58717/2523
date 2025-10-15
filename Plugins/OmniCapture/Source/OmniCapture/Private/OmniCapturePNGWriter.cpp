@@ -1,8 +1,14 @@
 #include "OmniCapturePNGWriter.h"
 
+#if __has_include("ImageWriteQueue/Public/ImageWriteQueue.h")
+#include "ImageWriteQueue/Public/ImageWriteQueue.h"
+#include "ImageWriteQueue/Public/ImageWriteTask.h"
+#include "ImageWriteQueue/Public/ImageWriteTypes.h"
+#else
 #include "ImageWriteQueue.h"
 #include "ImageWriteTask.h"
 #include "ImageWriteTypes.h"
+#endif
 
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
