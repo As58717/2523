@@ -63,6 +63,7 @@ namespace
             SHADER_PARAMETER(float, PolarStrength)
             SHADER_PARAMETER(int32, StereoLayout)
             SHADER_PARAMETER(float, Padding)
+            SHADER_PARAMETER(float, LongitudeSpan)
             SHADER_PARAMETER_SAMPLER(SamplerState, FaceSampler)
             SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float4>, LeftFaces)
             SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float4>, RightFaces)
@@ -197,10 +198,10 @@ namespace
         return OutCubemap.IsValid();
     }
 
-    FVector DirectionFromEquirectPixelCPU(const FIntPoint& Pixel, const FIntPoint& EyeResolution, float& OutLatitude)
+    FVector DirectionFromEquirectPixelCPU(const FIntPoint& Pixel, const FIntPoint& EyeResolution, double LongitudeSpan, float& OutLatitude)
     {
         const FVector2D UV((static_cast<double>(Pixel.X) + 0.5) / EyeResolution.X, (static_cast<double>(Pixel.Y) + 0.5) / EyeResolution.Y);
-        const double Longitude = (UV.X * 2.0 - 1.0) * PI;
+        const double Longitude = (UV.X * 2.0 - 1.0) * LongitudeSpan;
         OutLatitude = (0.5 - UV.Y) * PI;
 
         const double CosLat = FMath::Cos(OutLatitude);
@@ -446,9 +447,11 @@ namespace
         const int32 FaceResolution = Settings.Resolution;
         const bool bStereo = Settings.Mode == EOmniCaptureMode::Stereo;
         const bool bSideBySide = bStereo && Settings.StereoLayout == EOmniCaptureStereoLayout::SideBySide;
-        const int32 OutputWidth = bStereo && bSideBySide ? FaceResolution * 4 : FaceResolution * 2;
-        const int32 OutputHeight = bStereo && !bSideBySide ? FaceResolution * 2 : FaceResolution;
+        const FIntPoint OutputSize = Settings.GetEquirectResolution();
+        const int32 OutputWidth = OutputSize.X;
+        const int32 OutputHeight = OutputSize.Y;
         const bool bUseLinear = Settings.Gamma == EOmniCaptureGamma::Linear;
+        const float LongitudeSpan = Settings.GetLongitudeSpanRadians();
 
         FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
         FRDGBuilder GraphBuilder(RHICmdList);
@@ -473,6 +476,7 @@ namespace
         Parameters->PolarStrength = Settings.PolarDampening;
         Parameters->StereoLayout = Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? 0 : 1;
         Parameters->Padding = 0.0f;
+        Parameters->LongitudeSpan = LongitudeSpan;
         Parameters->LeftFaces = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(LeftArray));
         Parameters->RightFaces = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(RightArray));
         Parameters->FaceSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -638,10 +642,12 @@ namespace
         }
 
         const bool bStereo = Settings.Mode == EOmniCaptureMode::Stereo;
-        const bool bSideBySide = Settings.StereoLayout == EOmniCaptureStereoLayout::SideBySide;
+        const bool bSideBySide = bStereo && Settings.StereoLayout == EOmniCaptureStereoLayout::SideBySide;
         const int32 FaceResolution = LeftCubemap.Faces[0].Resolution;
-        const int32 OutputWidth = bStereo && bSideBySide ? FaceResolution * 4 : FaceResolution * 2;
-        const int32 OutputHeight = bStereo && !bSideBySide ? FaceResolution * 2 : FaceResolution;
+        const FIntPoint OutputSize = Settings.GetEquirectResolution();
+        const int32 OutputWidth = OutputSize.X;
+        const int32 OutputHeight = OutputSize.Y;
+        const double LongitudeSpan = Settings.GetLongitudeSpanRadians();
 
         OutResult.Size = FIntPoint(OutputWidth, OutputHeight);
         OutResult.bIsLinear = Settings.Gamma == EOmniCaptureGamma::Linear;
@@ -685,7 +691,7 @@ namespace
                     }
 
                     float Latitude = 0.0f;
-                    FVector Direction = DirectionFromEquirectPixelCPU(EyePixel, EyeResolution, Latitude);
+                    FVector Direction = DirectionFromEquirectPixelCPU(EyePixel, EyeResolution, LongitudeSpan, Latitude);
                     ApplyPolarMitigation(Settings.PolarDampening, Latitude, Direction);
 
                     const FLinearColor LinearColor = SampleCubemapCPU(
