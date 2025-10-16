@@ -22,6 +22,14 @@ FIntPoint FOmniCaptureSettings::GetEquirectResolution() const
         }
     }
 
+    auto MakeEven = [](int32 Value)
+    {
+        return (Value & 1) ? Value + 1 : Value;
+    };
+
+    OutputWidth = FMath::Max(2, MakeEven(OutputWidth));
+    OutputHeight = FMath::Max(2, MakeEven(OutputHeight));
+
     return FIntPoint(OutputWidth, OutputHeight);
 }
 

@@ -59,6 +59,20 @@ namespace
             return LOCTEXT("Coverage360", "360°");
         }
     }
+
+    FText LayoutToText(const FOmniCaptureSettings& Settings)
+    {
+        if (Settings.Mode == EOmniCaptureMode::Stereo)
+        {
+            if (Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom)
+            {
+                return LOCTEXT("LayoutStereoTopBottom", "Stereo (Top-Bottom)");
+            }
+            return LOCTEXT("LayoutStereoSideBySide", "Stereo (Side-by-Side)");
+        }
+
+        return LOCTEXT("LayoutMono", "Mono");
+    }
 }
 
 void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
@@ -481,11 +495,15 @@ void SOmniCaptureControlPanel::RefreshStatus()
     const bool bCapturing = Subsystem->IsCapturing();
     const FOmniCaptureSettings& Settings = bCapturing ? Subsystem->GetActiveSettings() : (SettingsObject.IsValid() ? SettingsObject->CaptureSettings : FOmniCaptureSettings());
 
-    const FText ConfigText = FText::Format(LOCTEXT("ConfigFormat", "Codec: {0} | Format: {1} | Zero Copy: {2} | Coverage: {3}"),
+    const FIntPoint OutputSize = Settings.GetEquirectResolution();
+    const FText ConfigText = FText::Format(LOCTEXT("ConfigFormat", "Codec: {0} | Format: {1} | Zero Copy: {2} | Coverage: {3} | Layout: {4} | Output: {5}×{6}"),
         CodecToText(Settings.Codec),
         FormatToText(Settings.NVENCColorFormat),
         Settings.bZeroCopy ? LOCTEXT("ZeroCopyYes", "Yes") : LOCTEXT("ZeroCopyNo", "No"),
-        CoverageToText(Settings.Coverage));
+        CoverageToText(Settings.Coverage),
+        LayoutToText(Settings),
+        FText::AsNumber(OutputSize.X),
+        FText::AsNumber(OutputSize.Y));
     ActiveConfigTextBlock->SetText(ConfigText);
 
     if (LastStillTextBlock.IsValid())

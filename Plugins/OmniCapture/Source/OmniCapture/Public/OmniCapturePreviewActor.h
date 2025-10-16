@@ -17,7 +17,7 @@ class OMNICAPTURE_API AOmniCapturePreviewActor : public AActor
 public:
     AOmniCapturePreviewActor();
 
-    void Initialize(float InScale);
+    void Initialize(float InScale, const FIntPoint& InitialResolution);
     void UpdatePreviewTexture(const FOmniCaptureEquirectResult& Result);
     void SetPreviewEnabled(bool bEnabled);
 
@@ -28,6 +28,7 @@ private:
     void EnsureMaterial();
     void ApplyTexture(UTexture2D* Texture);
     void ResizePreviewTexture(const FIntPoint& Size);
+    void UpdatePreviewAspectRatio(const FIntPoint& Size);
 
 private:
     UPROPERTY(Transient)
@@ -41,4 +42,5 @@ private:
 
     FName TextureParameterName = TEXT("SpriteTexture");
     float PreviewScale = 1.0f;
+    FIntPoint PreviewResolution = FIntPoint::ZeroValue;
 };

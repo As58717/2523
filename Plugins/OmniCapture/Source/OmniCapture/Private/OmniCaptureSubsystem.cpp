@@ -199,13 +199,17 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
 
     const FIntPoint OutputDimensions = ActiveSettings.GetEquirectResolution();
     const TCHAR* CoverageLabel = ActiveSettings.Coverage == EOmniCaptureCoverage::HalfSphere ? TEXT("180") : TEXT("360");
-    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Begin capture %s %s (%dx%d -> %dx%d) (%s, %s, %s) -> %s"),
+    const TCHAR* LayoutLabel = ActiveSettings.Mode == EOmniCaptureMode::Stereo
+        ? (ActiveSettings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? TEXT("Top-Bottom") : TEXT("Side-by-Side"))
+        : TEXT("Mono");
+    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Begin capture %s %s (%dx%d -> %dx%d, %s) (%s, %s, %s) -> %s"),
         ActiveSettings.Mode == EOmniCaptureMode::Stereo ? TEXT("Stereo") : TEXT("Mono"),
         CoverageLabel,
         ActiveSettings.Resolution,
         ActiveSettings.Resolution,
         OutputDimensions.X,
         OutputDimensions.Y,
+        LayoutLabel,
         ActiveSettings.OutputFormat == EOmniOutputFormat::PNGSequence ? TEXT("PNG") : TEXT("NVENC"),
         ActiveSettings.Gamma == EOmniCaptureGamma::Linear ? TEXT("Linear") : TEXT("sRGB"),
         ActiveSettings.Codec == EOmniCaptureCodec::HEVC ? TEXT("HEVC") : TEXT("H.264"),
@@ -559,12 +563,14 @@ void UOmniCaptureSubsystem::SpawnPreviewActor()
 
     if (AOmniCapturePreviewActor* Preview = World->SpawnActor<AOmniCapturePreviewActor>(SpawnParameters))
     {
-        Preview->Initialize(ActiveSettings.PreviewScreenScale);
+        const FIntPoint OutputSize = ActiveSettings.GetEquirectResolution();
+        Preview->Initialize(ActiveSettings.PreviewScreenScale, OutputSize);
         Preview->SetPreviewEnabled(true);
         if (RigActor.IsValid())
         {
             Preview->AttachToActor(RigActor.Get(), FAttachmentTransformRules::KeepWorldTransform);
-            Preview->SetActorLocation(RigActor->GetActorLocation() + FVector(ActiveSettings.Resolution * 0.1f, 0.0f, 0.0f));
+            const float Offset = FMath::Max(OutputSize.X, OutputSize.Y) * 0.05f;
+            Preview->SetActorLocation(RigActor->GetActorLocation() + FVector(Offset, 0.0f, 0.0f));
         }
         PreviewActor = Preview;
     }
