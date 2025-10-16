@@ -47,6 +47,18 @@ namespace
         default: return LOCTEXT("FormatBGRA", "BGRA");
         }
     }
+
+    FText CoverageToText(EOmniCaptureCoverage Coverage)
+    {
+        switch (Coverage)
+        {
+        case EOmniCaptureCoverage::HalfSphere:
+            return LOCTEXT("Coverage180", "180°");
+        case EOmniCaptureCoverage::FullSphere:
+        default:
+            return LOCTEXT("Coverage360", "360°");
+        }
+    }
 }
 
 void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
@@ -469,10 +481,11 @@ void SOmniCaptureControlPanel::RefreshStatus()
     const bool bCapturing = Subsystem->IsCapturing();
     const FOmniCaptureSettings& Settings = bCapturing ? Subsystem->GetActiveSettings() : (SettingsObject.IsValid() ? SettingsObject->CaptureSettings : FOmniCaptureSettings());
 
-    const FText ConfigText = FText::Format(LOCTEXT("ConfigFormat", "Codec: {0} | Format: {1} | Zero Copy: {2}"),
+    const FText ConfigText = FText::Format(LOCTEXT("ConfigFormat", "Codec: {0} | Format: {1} | Zero Copy: {2} | Coverage: {3}"),
         CodecToText(Settings.Codec),
         FormatToText(Settings.NVENCColorFormat),
-        Settings.bZeroCopy ? LOCTEXT("ZeroCopyYes", "Yes") : LOCTEXT("ZeroCopyNo", "No"));
+        Settings.bZeroCopy ? LOCTEXT("ZeroCopyYes", "Yes") : LOCTEXT("ZeroCopyNo", "No"),
+        CoverageToText(Settings.Coverage));
     ActiveConfigTextBlock->SetText(ConfigText);
 
     if (LastStillTextBlock.IsValid())

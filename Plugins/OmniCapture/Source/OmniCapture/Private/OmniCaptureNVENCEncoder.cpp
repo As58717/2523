@@ -126,8 +126,9 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     bZeroCopyRequested = Settings.bZeroCopy;
 
 #if WITH_OMNI_NVENC && PLATFORM_WINDOWS
-    const int32 OutputWidth = Settings.Resolution * 2;
-    const int32 OutputHeight = Settings.Mode == EOmniCaptureMode::Stereo ? Settings.Resolution * 2 : Settings.Resolution;
+    const FIntPoint OutputSize = Settings.GetEquirectResolution();
+    const int32 OutputWidth = OutputSize.X;
+    const int32 OutputHeight = OutputSize.Y;
 
     if (!FModuleManager::Get().IsModuleLoaded(TEXT("AVEncoder")))
     {

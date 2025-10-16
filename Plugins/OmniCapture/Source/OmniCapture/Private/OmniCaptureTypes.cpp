@@ -1,9 +1,38 @@
 #include "OmniCaptureTypes.h"
 #include "ImagePixelData.h"  //  ImagePixelData
 
+FIntPoint FOmniCaptureSettings::GetEquirectResolution() const
+{
+    const bool bStereo = Mode == EOmniCaptureMode::Stereo;
+    const bool bSideBySide = bStereo && StereoLayout == EOmniCaptureStereoLayout::SideBySide;
+    const bool bHalfSphere = Coverage == EOmniCaptureCoverage::HalfSphere;
+
+    int32 OutputWidth = Resolution * (bHalfSphere ? 1 : 2);
+    int32 OutputHeight = Resolution;
+
+    if (bStereo)
+    {
+        if (bSideBySide)
+        {
+            OutputWidth *= 2;
+        }
+        else
+        {
+            OutputHeight *= 2;
+        }
+    }
+
+    return FIntPoint(OutputWidth, OutputHeight);
+}
+
+float FOmniCaptureSettings::GetLongitudeSpanRadians() const
+{
+    return Coverage == EOmniCaptureCoverage::HalfSphere ? PI * 0.5f : PI;
+}
+
 // 示例：创建一个 FImagePixelData 对象
 TUniquePtr<FImagePixelData> CreateImagePixelData(const FIntPoint& Size)
-{
+{ 
     // 创建一个 FImagePixelData 对象
     TUniquePtr<FImagePixelData> PixelData = MakeUnique<FImagePixelData>(Size);
     if (!PixelData)

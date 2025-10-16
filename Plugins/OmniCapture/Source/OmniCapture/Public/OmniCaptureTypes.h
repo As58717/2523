@@ -10,6 +10,9 @@ UENUM(BlueprintType)
 enum class EOmniCaptureMode : uint8 { Mono, Stereo };
 
 UENUM(BlueprintType)
+enum class EOmniCaptureCoverage : uint8 { FullSphere, HalfSphere };
+
+UENUM(BlueprintType)
 enum class EOmniCaptureStereoLayout : uint8 { TopBottom, SideBySide };
 
 UENUM(BlueprintType)
@@ -52,8 +55,9 @@ USTRUCT(BlueprintType)
 struct FOmniCaptureSettings
 {
 	GENERATED_BODY()
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") EOmniCaptureMode Mode = EOmniCaptureMode::Mono;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") EOmniCaptureStereoLayout StereoLayout = EOmniCaptureStereoLayout::TopBottom;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") EOmniCaptureMode Mode = EOmniCaptureMode::Mono;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") EOmniCaptureCoverage Coverage = EOmniCaptureCoverage::FullSphere;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") EOmniCaptureStereoLayout StereoLayout = EOmniCaptureStereoLayout::TopBottom;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 1024, UIMin = 1024)) int32 Resolution = 4096;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, UIMin = 0.0)) float TargetFrameRate = 60.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") EOmniCaptureGamma Gamma = EOmniCaptureGamma::SRGB;
@@ -84,8 +88,11 @@ struct FOmniCaptureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureColorFormat NVENCColorFormat = EOmniCaptureColorFormat::NV12;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") bool bZeroCopy = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC", meta = (ClampMin = 0, UIMin = 0)) int32 RingBufferCapacity = 6;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureRingBufferPolicy RingBufferPolicy = EOmniCaptureRingBufferPolicy::DropOldest;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") bool bOpenPreviewOnFinalize = false;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureRingBufferPolicy RingBufferPolicy = EOmniCaptureRingBufferPolicy::DropOldest;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") bool bOpenPreviewOnFinalize = false;
+
+        FIntPoint GetEquirectResolution() const;
+        float GetLongitudeSpanRadians() const;
 };
 
 USTRUCT()

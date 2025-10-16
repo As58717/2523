@@ -197,10 +197,15 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     LastPreviewUpdateTime = CaptureStartTime;
     State = EOmniCaptureState::Recording;
 
-    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Begin capture %s %dx%d (%s, %s, %s) -> %s"),
+    const FIntPoint OutputDimensions = ActiveSettings.GetEquirectResolution();
+    const TCHAR* CoverageLabel = ActiveSettings.Coverage == EOmniCaptureCoverage::HalfSphere ? TEXT("180") : TEXT("360");
+    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Begin capture %s %s (%dx%d -> %dx%d) (%s, %s, %s) -> %s"),
         ActiveSettings.Mode == EOmniCaptureMode::Stereo ? TEXT("Stereo") : TEXT("Mono"),
+        CoverageLabel,
         ActiveSettings.Resolution,
         ActiveSettings.Resolution,
+        OutputDimensions.X,
+        OutputDimensions.Y,
         ActiveSettings.OutputFormat == EOmniOutputFormat::PNGSequence ? TEXT("PNG") : TEXT("NVENC"),
         ActiveSettings.Gamma == EOmniCaptureGamma::Linear ? TEXT("Linear") : TEXT("sRGB"),
         ActiveSettings.Codec == EOmniCaptureCodec::HEVC ? TEXT("HEVC") : TEXT("H.264"),
