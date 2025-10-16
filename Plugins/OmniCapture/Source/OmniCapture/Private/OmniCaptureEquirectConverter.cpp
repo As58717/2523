@@ -62,8 +62,10 @@ namespace
             SHADER_PARAMETER(float, SeamStrength)
             SHADER_PARAMETER(float, PolarStrength)
             SHADER_PARAMETER(int32, StereoLayout)
+            SHADER_PARAMETER(int32, bHalfSphere)
             SHADER_PARAMETER(float, Padding)
             SHADER_PARAMETER(float, LongitudeSpan)
+            SHADER_PARAMETER(float, LatitudeSpan)
             SHADER_PARAMETER_SAMPLER(SamplerState, FaceSampler)
             SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float4>, LeftFaces)
             SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float4>, RightFaces)
@@ -198,14 +200,15 @@ namespace
         return OutCubemap.IsValid();
     }
 
-    FVector DirectionFromEquirectPixelCPU(const FIntPoint& Pixel, const FIntPoint& EyeResolution, double LongitudeSpan, float& OutLatitude)
+    FVector DirectionFromEquirectPixelCPU(const FIntPoint& Pixel, const FIntPoint& EyeResolution, double LongitudeSpan, double LatitudeSpan, float& OutLatitude)
     {
         const FVector2D UV((static_cast<double>(Pixel.X) + 0.5) / EyeResolution.X, (static_cast<double>(Pixel.Y) + 0.5) / EyeResolution.Y);
         const double Longitude = (UV.X * 2.0 - 1.0) * LongitudeSpan;
-        OutLatitude = (0.5 - UV.Y) * PI;
+        const double Latitude = (0.5 - UV.Y) * LatitudeSpan * 2.0;
+        OutLatitude = static_cast<float>(Latitude);
 
-        const double CosLat = FMath::Cos(OutLatitude);
-        const double SinLat = FMath::Sin(OutLatitude);
+        const double CosLat = FMath::Cos(Latitude);
+        const double SinLat = FMath::Sin(Latitude);
         const double CosLon = FMath::Cos(Longitude);
         const double SinLon = FMath::Sin(Longitude);
 
@@ -452,6 +455,8 @@ namespace
         const int32 OutputHeight = OutputSize.Y;
         const bool bUseLinear = Settings.Gamma == EOmniCaptureGamma::Linear;
         const float LongitudeSpan = Settings.GetLongitudeSpanRadians();
+        const float LatitudeSpan = Settings.GetLatitudeSpanRadians();
+        const bool bHalfSphere = Settings.IsVR180();
 
         FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
         FRDGBuilder GraphBuilder(RHICmdList);
@@ -477,6 +482,8 @@ namespace
         Parameters->StereoLayout = Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? 0 : 1;
         Parameters->Padding = 0.0f;
         Parameters->LongitudeSpan = LongitudeSpan;
+        Parameters->LatitudeSpan = LatitudeSpan;
+        Parameters->bHalfSphere = bHalfSphere ? 1 : 0;
         Parameters->LeftFaces = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(LeftArray));
         Parameters->RightFaces = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(RightArray));
         Parameters->FaceSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -648,6 +655,8 @@ namespace
         const int32 OutputWidth = OutputSize.X;
         const int32 OutputHeight = OutputSize.Y;
         const double LongitudeSpan = Settings.GetLongitudeSpanRadians();
+        const double LatitudeSpan = Settings.GetLatitudeSpanRadians();
+        const bool bHalfSphere = Settings.IsVR180();
 
         OutResult.Size = FIntPoint(OutputWidth, OutputHeight);
         OutResult.bIsLinear = Settings.Gamma == EOmniCaptureGamma::Linear;
@@ -691,8 +700,15 @@ namespace
                     }
 
                     float Latitude = 0.0f;
-                    FVector Direction = DirectionFromEquirectPixelCPU(EyePixel, EyeResolution, LongitudeSpan, Latitude);
+                    FVector Direction = DirectionFromEquirectPixelCPU(EyePixel, EyeResolution, LongitudeSpan, LatitudeSpan, Latitude);
                     ApplyPolarMitigation(Settings.PolarDampening, Latitude, Direction);
+
+                    if (bHalfSphere && Direction.X < 0.0f)
+                    {
+                        PixelArray[Index] = ConvertColor(FLinearColor::Transparent);
+                        OutResult.PreviewPixels[Index] = FColor::Transparent;
+                        continue;
+                    }
 
                     const FLinearColor LinearColor = SampleCubemapCPU(
                         (bStereo && bRightEye) ? RightCubemap : LeftCubemap,

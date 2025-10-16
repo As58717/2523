@@ -13,15 +13,17 @@ cbuffer FOmniEquirectParameters
     float SeamStrength;
     float PolarStrength;
     int StereoLayout;
+    int bHalfSphere;
     float Padding;
     float LongitudeSpan;
+    float LatitudeSpan;
 };
 
 float3 DirectionFromEquirect(uint2 Pixel, float2 EyeRes, out float Latitude)
 {
     float2 UV = (float2(Pixel) + 0.5f) / EyeRes;
     float Longitude = (UV.x * 2.0f - 1.0f) * LongitudeSpan;
-    Latitude = (0.5f - UV.y) * PI;
+    Latitude = (0.5f - UV.y) * LatitudeSpan * 2.0f;
 
     float CosLat = cos(Latitude);
     float SinLat = sin(Latitude);
@@ -141,6 +143,12 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
             float3 PoleVector = float3(0.0f, Latitude >= 0.0f ? 1.0f : -1.0f, 0.0f);
             Direction = normalize(lerp(Direction, PoleVector, Blend));
         }
+    }
+
+    if (bHalfSphere != 0 && Direction.x < 0.0f)
+    {
+        OutputTexture[DispatchThreadID.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        return;
     }
 
     float4 Color = SampleCubemap(bRightEye ? RightFaces : LeftFaces, Direction);

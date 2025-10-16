@@ -92,7 +92,15 @@ struct FOmniCaptureSettings
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") bool bOpenPreviewOnFinalize = false;
 
         FIntPoint GetEquirectResolution() const;
+        FIntPoint GetPerEyeOutputResolution() const;
+        bool IsStereo() const;
+        bool IsVR180() const;
+        FString GetStereoModeMetadataTag() const;
+        int32 GetEncoderAlignmentRequirement() const;
+        float GetHorizontalFOVDegrees() const;
+        float GetVerticalFOVDegrees() const;
         float GetLongitudeSpanRadians() const;
+        float GetLatitudeSpanRadians() const;
 };
 
 USTRUCT()
