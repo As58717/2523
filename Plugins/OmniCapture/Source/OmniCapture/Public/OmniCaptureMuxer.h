@@ -18,6 +18,7 @@ public:
 private:
     bool WriteManifest(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, FString& OutManifestPath) const;
     bool TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath) const;
+    bool WriteSpatialMetadata(const FOmniCaptureSettings& Settings) const;
     FString BuildFFmpegBinaryPath() const;
     double CalculateFrameRate(const TArray<FOmniCaptureFrameMetadata>& Frames) const;
 

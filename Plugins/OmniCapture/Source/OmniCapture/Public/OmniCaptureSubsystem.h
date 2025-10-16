@@ -86,6 +86,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "OmniCapture")
     FString GetLastStillImagePath() const { return LastStillImagePath; }
 
+    UFUNCTION(BlueprintCallable, Category = "OmniCapture")
+    void SetPreviewVisualizationMode(EOmniCapturePreviewView InView);
+
 private:
     void CreateRig();
     void DestroyRig();

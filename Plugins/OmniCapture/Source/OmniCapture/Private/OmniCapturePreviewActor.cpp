@@ -136,7 +136,12 @@ void AOmniCapturePreviewActor::ApplyTexture(UTexture2D* Texture)
     }
 }
 
-void AOmniCapturePreviewActor::UpdatePreviewTexture(const FOmniCaptureEquirectResult& Result)
+void AOmniCapturePreviewActor::SetPreviewView(EOmniCapturePreviewView InView)
+{
+    PreviewViewMode = InView;
+}
+
+void AOmniCapturePreviewActor::UpdatePreviewTexture(const FOmniCaptureEquirectResult& Result, const FOmniCaptureSettings& Settings)
 {
     const FIntPoint Size = Result.Size;
     if (Size.X <= 0 || Size.Y <= 0)
@@ -144,7 +149,23 @@ void AOmniCapturePreviewActor::UpdatePreviewTexture(const FOmniCaptureEquirectRe
         return;
     }
 
-    ResizePreviewTexture(Size);
+    const bool bStereo = Settings.IsStereo();
+    const bool bShowSingleEye = bStereo && PreviewViewMode != EOmniCapturePreviewView::StereoComposite;
+
+    FIntPoint TargetSize = Size;
+    if (bShowSingleEye)
+    {
+        if (Settings.StereoLayout == EOmniCaptureStereoLayout::SideBySide)
+        {
+            TargetSize.X = FMath::Max(1, Size.X / 2);
+        }
+        else
+        {
+            TargetSize.Y = FMath::Max(1, Size.Y / 2);
+        }
+    }
+
+    ResizePreviewTexture(TargetSize);
     if (!PreviewTexture)
     {
         return;
@@ -159,7 +180,44 @@ void AOmniCapturePreviewActor::UpdatePreviewTexture(const FOmniCaptureEquirectRe
         return;
     }
 
-    FMemory::Memcpy(TextureMemory, Result.PreviewPixels.GetData(), Result.PreviewPixels.Num() * sizeof(FColor));
+    if (bShowSingleEye)
+    {
+        const int32 OutputPixels = TargetSize.X * TargetSize.Y;
+        PreviewScratchBuffer.SetNum(OutputPixels, false);
+
+        if (Settings.StereoLayout == EOmniCaptureStereoLayout::SideBySide)
+        {
+            const int32 EyeWidth = TargetSize.X;
+            const int32 SourceWidth = Size.X;
+            const int32 StartX = PreviewViewMode == EOmniCapturePreviewView::LeftEye ? 0 : EyeWidth;
+            for (int32 Row = 0; Row < Size.Y; ++Row)
+            {
+                const int32 DestIndex = Row * EyeWidth;
+                const int32 SourceIndex = Row * SourceWidth + StartX;
+                FMemory::Memcpy(PreviewScratchBuffer.GetData() + DestIndex, Result.PreviewPixels.GetData() + SourceIndex, EyeWidth * sizeof(FColor));
+            }
+        }
+        else
+        {
+            const int32 EyeHeight = TargetSize.Y;
+            const int32 SourceWidth = Size.X;
+            const int32 StartRow = PreviewViewMode == EOmniCapturePreviewView::LeftEye ? 0 : EyeHeight;
+            for (int32 Row = 0; Row < EyeHeight; ++Row)
+            {
+                const int32 DestIndex = Row * TargetSize.X;
+                const int32 SourceIndex = (StartRow + Row) * SourceWidth;
+                FMemory::Memcpy(PreviewScratchBuffer.GetData() + DestIndex, Result.PreviewPixels.GetData() + SourceIndex, TargetSize.X * sizeof(FColor));
+            }
+        }
+
+        FMemory::Memcpy(TextureMemory, PreviewScratchBuffer.GetData(), PreviewScratchBuffer.Num() * sizeof(FColor));
+    }
+    else
+    {
+        const int32 CopyCount = FMath::Min(Result.PreviewPixels.Num(), TargetSize.X * TargetSize.Y);
+        FMemory::Memcpy(TextureMemory, Result.PreviewPixels.GetData(), CopyCount * sizeof(FColor));
+    }
+
     Mip.BulkData.Unlock();
     PreviewTexture->UpdateResource();
 }

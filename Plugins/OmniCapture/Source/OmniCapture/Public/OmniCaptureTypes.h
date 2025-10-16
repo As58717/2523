@@ -39,6 +39,9 @@ enum class EOmniCaptureState : uint8 { Idle, Recording, Paused, DroppedFrames, F
 UENUM(BlueprintType)
 enum class EOmniCaptureRingBufferPolicy : uint8 { DropOldest, BlockProducer };
 
+UENUM(BlueprintType)
+enum class EOmniCapturePreviewView : uint8 { StereoComposite, LeftEye, RightEye };
+
 USTRUCT(BlueprintType)
 struct FOmniCaptureQuality
 {
@@ -90,9 +93,22 @@ struct FOmniCaptureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC", meta = (ClampMin = 0, UIMin = 0)) int32 RingBufferCapacity = 6;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureRingBufferPolicy RingBufferPolicy = EOmniCaptureRingBufferPolicy::DropOldest;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") bool bOpenPreviewOnFinalize = false;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preview") EOmniCapturePreviewView PreviewVisualization = EOmniCapturePreviewView::StereoComposite;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bGenerateManifest = true;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bWriteSpatialMetadata = true;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bWriteXMPMetadata = true;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bInjectFFmpegMetadata = true;
 
         FIntPoint GetEquirectResolution() const;
+        FIntPoint GetPerEyeOutputResolution() const;
+        bool IsStereo() const;
+        bool IsVR180() const;
+        FString GetStereoModeMetadataTag() const;
+        int32 GetEncoderAlignmentRequirement() const;
+        float GetHorizontalFOVDegrees() const;
+        float GetVerticalFOVDegrees() const;
         float GetLongitudeSpanRadians() const;
+        float GetLatitudeSpanRadians() const;
 };
 
 USTRUCT()

@@ -13,7 +13,7 @@ namespace
 {
     const TCHAR* ToCoverageString(EOmniCaptureCoverage Coverage)
     {
-        return Coverage == EOmniCaptureCoverage::HalfSphere ? TEXT("180") : TEXT("360");
+        return Coverage == EOmniCaptureCoverage::HalfSphere ? TEXT("VR180") : TEXT("VR360");
     }
 
     const TCHAR* ToLayoutString(const FOmniCaptureSettings& Settings)
@@ -119,14 +119,30 @@ void FOmniCaptureMuxer::PushFrame(const FOmniCaptureFrame& Frame)
 
 bool FOmniCaptureMuxer::FinalizeCapture(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath)
 {
-    FString ManifestPath;
-    if (!WriteManifest(Settings, Frames, AudioPath, VideoPath, ManifestPath))
+    bool bSuccess = true;
+
+    if (Settings.bGenerateManifest)
     {
-        return false;
+        FString ManifestPath;
+        if (WriteManifest(Settings, Frames, AudioPath, VideoPath, ManifestPath))
+        {
+            UE_LOG(LogTemp, Log, TEXT("OmniCapture manifest written to %s"), *ManifestPath);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Failed to write OmniCapture manifest for %s"), *BaseFileName);
+            bSuccess = false;
+        }
     }
-    UE_LOG(LogTemp, Log, TEXT("OmniCapture manifest written to %s"), *ManifestPath);
+
+    if (!WriteSpatialMetadata(Settings))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Failed to write VR spatial metadata sidecars for %s"), *BaseFileName);
+        bSuccess = false;
+    }
+
     TryInvokeFFmpeg(Settings, Frames, AudioPath, VideoPath);
-    return true;
+    return bSuccess;
 }
 
 bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, FString& OutManifestPath) const
@@ -148,6 +164,38 @@ bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, cons
     Root->SetNumberField(TEXT("outputHeight"), OutputSize.Y);
     Root->SetStringField(TEXT("outputLayout"), ToLayoutString(Settings));
     Root->SetNumberField(TEXT("longitudeSpanRadians"), Settings.GetLongitudeSpanRadians());
+    Root->SetNumberField(TEXT("latitudeSpanRadians"), Settings.GetLatitudeSpanRadians());
+    Root->SetBoolField(TEXT("isStereo"), Settings.IsStereo());
+    Root->SetBoolField(TEXT("isVR180"), Settings.IsVR180());
+    Root->SetNumberField(TEXT("horizontalFOVDegrees"), Settings.GetHorizontalFOVDegrees());
+    Root->SetNumberField(TEXT("verticalFOVDegrees"), Settings.GetVerticalFOVDegrees());
+    Root->SetStringField(TEXT("stereoMode"), Settings.GetStereoModeMetadataTag());
+    Root->SetNumberField(TEXT("encoderAlignment"), Settings.GetEncoderAlignmentRequirement());
+    const FIntPoint EyeSize = Settings.GetPerEyeOutputResolution();
+    Root->SetNumberField(TEXT("perEyeWidth"), EyeSize.X);
+    Root->SetNumberField(TEXT("perEyeHeight"), EyeSize.Y);
+
+    const bool bHalfSphere = Settings.IsVR180();
+    const int32 FullPanoWidth = bHalfSphere ? OutputSize.X * 2 : OutputSize.X;
+    const int32 FullPanoHeight = OutputSize.Y;
+    const int32 CroppedLeft = bHalfSphere ? (FullPanoWidth - OutputSize.X) / 2 : 0;
+    const int32 CroppedTop = 0;
+
+    TSharedRef<FJsonObject> GPano = MakeShared<FJsonObject>();
+    GPano->SetStringField(TEXT("projectionType"), TEXT("equirectangular"));
+    GPano->SetStringField(TEXT("stereoMode"), Settings.GetStereoModeMetadataTag());
+    GPano->SetNumberField(TEXT("fullPanoWidthPixels"), FullPanoWidth);
+    GPano->SetNumberField(TEXT("fullPanoHeightPixels"), FullPanoHeight);
+    GPano->SetNumberField(TEXT("croppedAreaImageWidthPixels"), OutputSize.X);
+    GPano->SetNumberField(TEXT("croppedAreaImageHeightPixels"), OutputSize.Y);
+    GPano->SetNumberField(TEXT("croppedAreaLeftPixels"), CroppedLeft);
+    GPano->SetNumberField(TEXT("croppedAreaTopPixels"), CroppedTop);
+    GPano->SetNumberField(TEXT("initialHorizontalFOVDegrees"), Settings.GetHorizontalFOVDegrees());
+    GPano->SetNumberField(TEXT("initialVerticalFOVDegrees"), Settings.GetVerticalFOVDegrees());
+    GPano->SetNumberField(TEXT("initialViewHeadingDegrees"), 0.0);
+    GPano->SetNumberField(TEXT("initialViewPitchDegrees"), 0.0);
+    GPano->SetNumberField(TEXT("initialViewRollDegrees"), 0.0);
+    Root->SetObjectField(TEXT("gpano"), GPano);
 
     switch (Settings.ColorSpace)
     {
@@ -206,6 +254,108 @@ bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, cons
 
     OutManifestPath = OutputDirectory / (BaseFileName + TEXT("_Manifest.json"));
     return FFileHelper::SaveStringToFile(OutputString, *OutManifestPath);
+}
+
+bool FOmniCaptureMuxer::WriteSpatialMetadata(const FOmniCaptureSettings& Settings) const
+{
+    if (!Settings.bWriteSpatialMetadata && !Settings.bWriteXMPMetadata)
+    {
+        return true;
+    }
+
+    const FIntPoint OutputSize = Settings.GetEquirectResolution();
+    if (OutputSize.X <= 0 || OutputSize.Y <= 0)
+    {
+        return false;
+    }
+
+    const FString StereoMode = Settings.GetStereoModeMetadataTag();
+    const bool bHalfSphere = Settings.IsVR180();
+    const FIntPoint EyeSize = Settings.GetPerEyeOutputResolution();
+    const int32 FullPanoWidth = bHalfSphere ? OutputSize.X * 2 : OutputSize.X;
+    const int32 FullPanoHeight = OutputSize.Y;
+    const int32 CroppedLeft = bHalfSphere ? (FullPanoWidth - OutputSize.X) / 2 : 0;
+    const int32 CroppedTop = 0;
+
+    TSharedRef<FJsonObject> SpatialRoot = MakeShared<FJsonObject>();
+    SpatialRoot->SetStringField(TEXT("projection"), bHalfSphere ? TEXT("VR180") : TEXT("VR360"));
+    SpatialRoot->SetStringField(TEXT("stereoMode"), StereoMode);
+    SpatialRoot->SetBoolField(TEXT("isStereo"), Settings.IsStereo());
+    SpatialRoot->SetNumberField(TEXT("frameWidth"), OutputSize.X);
+    SpatialRoot->SetNumberField(TEXT("frameHeight"), OutputSize.Y);
+    SpatialRoot->SetNumberField(TEXT("perEyeWidth"), EyeSize.X);
+    SpatialRoot->SetNumberField(TEXT("perEyeHeight"), EyeSize.Y);
+    SpatialRoot->SetNumberField(TEXT("fullPanoWidth"), FullPanoWidth);
+    SpatialRoot->SetNumberField(TEXT("fullPanoHeight"), FullPanoHeight);
+    SpatialRoot->SetNumberField(TEXT("croppedLeft"), CroppedLeft);
+    SpatialRoot->SetNumberField(TEXT("croppedTop"), CroppedTop);
+    SpatialRoot->SetNumberField(TEXT("horizontalFOVDegrees"), Settings.GetHorizontalFOVDegrees());
+    SpatialRoot->SetNumberField(TEXT("verticalFOVDegrees"), Settings.GetVerticalFOVDegrees());
+
+    bool bSuccess = true;
+
+    if (Settings.bWriteSpatialMetadata)
+    {
+        FString SpatialJson;
+        TSharedRef<TJsonWriter<>> SpatialWriter = TJsonWriterFactory<>::Create(&SpatialJson);
+        if (!FJsonSerializer::Serialize(SpatialRoot, SpatialWriter))
+        {
+            bSuccess = false;
+        }
+        else
+        {
+            const FString SpatialPath = OutputDirectory / (BaseFileName + TEXT("_SpatialMetadata.json"));
+            if (!FFileHelper::SaveStringToFile(SpatialJson, *SpatialPath))
+            {
+                bSuccess = false;
+            }
+        }
+    }
+
+    if (!Settings.bWriteXMPMetadata)
+    {
+        return bSuccess;
+    }
+
+    const FString XMPString = FString::Printf(
+        TEXT("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
+        TEXT("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n")
+        TEXT(" <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n")
+        TEXT("  <rdf:Description rdf:about=\"\"\n")
+        TEXT("    xmlns:GPano=\"http://ns.google.com/photos/1.0/panorama/\"\n")
+        TEXT("    GPano:ProjectionType=\"equirectangular\"\n")
+        TEXT("    GPano:StereoMode=\"%s\"\n")
+        TEXT("    GPano:StitchingSoftware=\"OmniCapture\"\n")
+        TEXT("    GPano:CroppedAreaImageWidthPixels=\"%d\"\n")
+        TEXT("    GPano:CroppedAreaImageHeightPixels=\"%d\"\n")
+        TEXT("    GPano:CroppedAreaLeftPixels=\"%d\"\n")
+        TEXT("    GPano:CroppedAreaTopPixels=\"%d\"\n")
+        TEXT("    GPano:FullPanoWidthPixels=\"%d\"\n")
+        TEXT("    GPano:FullPanoHeightPixels=\"%d\"\n")
+        TEXT("    GPano:InitialViewHeadingDegrees=\"0\"\n")
+        TEXT("    GPano:InitialViewPitchDegrees=\"0\"\n")
+        TEXT("    GPano:InitialViewRollDegrees=\"0\"\n")
+        TEXT("    GPano:InitialHorizontalFOVDegrees=\"%.2f\"\n")
+        TEXT("    GPano:InitialVerticalFOVDegrees=\"%.2f\"/>\n")
+        TEXT(" </rdf:RDF>\n")
+        TEXT("</x:xmpmeta>\n"),
+        *StereoMode,
+        OutputSize.X,
+        OutputSize.Y,
+        CroppedLeft,
+        CroppedTop,
+        FullPanoWidth,
+        FullPanoHeight,
+        static_cast<double>(Settings.GetHorizontalFOVDegrees()),
+        static_cast<double>(Settings.GetVerticalFOVDegrees()));
+
+    const FString XMPPath = OutputDirectory / (BaseFileName + TEXT("_VRMetadata.xmp"));
+    if (!FFileHelper::SaveStringToFile(XMPString, *XMPPath))
+    {
+        bSuccess = false;
+    }
+
+    return bSuccess;
 }
 
 bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath) const
@@ -290,13 +440,15 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
         }
     }
 
-    const TCHAR* StereoMode = Settings.Mode == EOmniCaptureMode::Stereo ? TEXT("top-bottom") : TEXT("mono");
-    if (Settings.Mode == EOmniCaptureMode::Stereo)
-    {
-        StereoMode = Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? TEXT("top-bottom") : TEXT("left-right");
-    }
-
-    const bool bHalfSphere = Settings.Coverage == EOmniCaptureCoverage::HalfSphere;
+    const FString StereoModeTag = Settings.GetStereoModeMetadataTag();
+    const TCHAR* StereoMode = *StereoModeTag;
+    const bool bHalfSphere = Settings.IsVR180();
+    const FIntPoint OutputSize = Settings.GetEquirectResolution();
+    const int32 FullPanoWidth = bHalfSphere ? OutputSize.X * 2 : OutputSize.X;
+    const int32 FullPanoHeight = OutputSize.Y;
+    const int32 CroppedLeft = bHalfSphere ? (FullPanoWidth - OutputSize.X) / 2 : 0;
+    const int32 CroppedTop = 0;
+    const TCHAR* ViewTag = bHalfSphere ? TEXT("VR180") : TEXT("VR360");
 
     if (Settings.OutputFormat == EOmniOutputFormat::PNGSequence)
     {
@@ -308,18 +460,33 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
         CommandLine += TEXT(" -c:v copy");
     }
 
-    FString MetadataArgs = FString::Printf(TEXT(" -metadata:s:v:0 spherical_video=1 -metadata:s:v:0 projection=equirectangular -metadata:s:v:0 stereo_mode=%s"), StereoMode);
-    MetadataArgs += TEXT(" -metadata:s:v:0 spatial_audio=0 -metadata:s:v:0 stitching_software=OmniCapture");
-    MetadataArgs += TEXT(" -metadata:s:v:0 projection_pose_yaw_degrees=0 -metadata:s:v:0 projection_pose_pitch_degrees=0 -metadata:s:v:0 projection_pose_roll_degrees=0");
-    if (bHalfSphere)
+    if (Settings.bInjectFFmpegMetadata)
     {
-        MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-90 -metadata:s:v:0 bound_right=90 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
+        FString MetadataArgs = FString::Printf(TEXT(" -metadata:s:v:0 spherical_video=1 -metadata:s:v:0 projection=equirectangular -metadata:s:v:0 stereo_mode=%s"), StereoMode);
+        MetadataArgs += TEXT(" -metadata:s:v:0 spatial_audio=0 -metadata:s:v:0 stitching_software=OmniCapture");
+        MetadataArgs += TEXT(" -metadata:s:v:0 projection_pose_yaw_degrees=0 -metadata:s:v:0 projection_pose_pitch_degrees=0 -metadata:s:v:0 projection_pose_roll_degrees=0");
+        if (bHalfSphere)
+        {
+            MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-90 -metadata:s:v:0 bound_right=90 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
+        }
+        else
+        {
+            MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-180 -metadata:s:v:0 bound_right=180 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
+        }
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 view=%s"), ViewTag);
+        MetadataArgs += TEXT(" -metadata:s:v:0 spherical=1");
+        MetadataArgs += TEXT(" -metadata:s:v:0 gpano:ProjectionType=equirectangular");
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:StereoMode=%s"), StereoMode);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:FullPanoWidthPixels=%d"), FullPanoWidth);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:FullPanoHeightPixels=%d"), FullPanoHeight);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaImageWidthPixels=%d"), OutputSize.X);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaImageHeightPixels=%d"), OutputSize.Y);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaLeftPixels=%d"), CroppedLeft);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaTopPixels=%d"), CroppedTop);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:InitialHorizontalFOVDegrees=%.2f"), static_cast<double>(Settings.GetHorizontalFOVDegrees()));
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:InitialVerticalFOVDegrees=%.2f"), static_cast<double>(Settings.GetVerticalFOVDegrees()));
+        CommandLine += MetadataArgs;
     }
-    else
-    {
-        MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-180 -metadata:s:v:0 bound_right=180 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
-    }
-    CommandLine += MetadataArgs;
     CommandLine += FString::Printf(TEXT(" -colorspace %s -color_primaries %s -color_trc %s"), *ColorSpaceArg, *ColorPrimariesArg, *ColorTransferArg);
 
     if (Settings.bForceConstantFrameRate)
