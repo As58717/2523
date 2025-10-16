@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "OmniCaptureTypes.h"
 #include "OmniCapturePreviewActor.generated.h"
 
 class UStaticMeshComponent;
@@ -18,8 +19,9 @@ public:
     AOmniCapturePreviewActor();
 
     void Initialize(float InScale, const FIntPoint& InitialResolution);
-    void UpdatePreviewTexture(const FOmniCaptureEquirectResult& Result);
+    void UpdatePreviewTexture(const FOmniCaptureEquirectResult& Result, const FOmniCaptureSettings& Settings);
     void SetPreviewEnabled(bool bEnabled);
+    void SetPreviewView(EOmniCapturePreviewView InView);
 
 protected:
     virtual void BeginPlay() override;
@@ -43,4 +45,6 @@ private:
     FName TextureParameterName = TEXT("SpriteTexture");
     float PreviewScale = 1.0f;
     FIntPoint PreviewResolution = FIntPoint::ZeroValue;
+    EOmniCapturePreviewView PreviewViewMode = EOmniCapturePreviewView::StereoComposite;
+    TArray<FColor> PreviewScratchBuffer;
 };

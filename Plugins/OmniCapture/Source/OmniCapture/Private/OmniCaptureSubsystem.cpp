@@ -483,6 +483,19 @@ FOmniAudioSyncStats UOmniCaptureSubsystem::GetAudioSyncStats() const
     return AudioStats;
 }
 
+void UOmniCaptureSubsystem::SetPreviewVisualizationMode(EOmniCapturePreviewView InView)
+{
+    ActiveSettings.PreviewVisualization = InView;
+    OriginalSettings.PreviewVisualization = InView;
+
+    if (AOmniCapturePreviewActor* Preview = PreviewActor.Get())
+    {
+        Preview->SetPreviewView(InView);
+    }
+
+    LastPreviewUpdateTime = 0.0;
+}
+
 void UOmniCaptureSubsystem::CreateRig()
 {
     DestroyRig();
@@ -566,6 +579,7 @@ void UOmniCaptureSubsystem::SpawnPreviewActor()
         const FIntPoint OutputSize = ActiveSettings.GetEquirectResolution();
         Preview->Initialize(ActiveSettings.PreviewScreenScale, OutputSize);
         Preview->SetPreviewEnabled(true);
+        Preview->SetPreviewView(ActiveSettings.PreviewVisualization);
         if (RigActor.IsValid())
         {
             Preview->AttachToActor(RigActor.Get(), FAttachmentTransformRules::KeepWorldTransform);
@@ -1035,7 +1049,7 @@ void UOmniCaptureSubsystem::CaptureFrame()
         const double Now = FPlatformTime::Seconds();
         if (PreviewFrameInterval <= 0.0 || (Now - LastPreviewUpdateTime) >= PreviewFrameInterval)
         {
-            PreviewActor->UpdatePreviewTexture(ConversionResult);
+            PreviewActor->UpdatePreviewTexture(ConversionResult, ActiveSettings);
             LastPreviewUpdateTime = Now;
         }
     }

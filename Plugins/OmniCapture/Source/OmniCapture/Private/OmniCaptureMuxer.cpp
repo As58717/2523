@@ -119,19 +119,30 @@ void FOmniCaptureMuxer::PushFrame(const FOmniCaptureFrame& Frame)
 
 bool FOmniCaptureMuxer::FinalizeCapture(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath)
 {
-    FString ManifestPath;
-    if (!WriteManifest(Settings, Frames, AudioPath, VideoPath, ManifestPath))
+    bool bSuccess = true;
+
+    if (Settings.bGenerateManifest)
     {
-        return false;
+        FString ManifestPath;
+        if (WriteManifest(Settings, Frames, AudioPath, VideoPath, ManifestPath))
+        {
+            UE_LOG(LogTemp, Log, TEXT("OmniCapture manifest written to %s"), *ManifestPath);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Failed to write OmniCapture manifest for %s"), *BaseFileName);
+            bSuccess = false;
+        }
     }
-    UE_LOG(LogTemp, Log, TEXT("OmniCapture manifest written to %s"), *ManifestPath);
-    const bool bSpatialMetadataWritten = WriteSpatialMetadata(Settings);
-    if (!bSpatialMetadataWritten)
+
+    if (!WriteSpatialMetadata(Settings))
     {
         UE_LOG(LogTemp, Warning, TEXT("Failed to write VR spatial metadata sidecars for %s"), *BaseFileName);
+        bSuccess = false;
     }
+
     TryInvokeFFmpeg(Settings, Frames, AudioPath, VideoPath);
-    return bSpatialMetadataWritten;
+    return bSuccess;
 }
 
 bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, FString& OutManifestPath) const
@@ -247,6 +258,11 @@ bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, cons
 
 bool FOmniCaptureMuxer::WriteSpatialMetadata(const FOmniCaptureSettings& Settings) const
 {
+    if (!Settings.bWriteSpatialMetadata && !Settings.bWriteXMPMetadata)
+    {
+        return true;
+    }
+
     const FIntPoint OutputSize = Settings.GetEquirectResolution();
     if (OutputSize.X <= 0 || OutputSize.Y <= 0)
     {
@@ -276,17 +292,29 @@ bool FOmniCaptureMuxer::WriteSpatialMetadata(const FOmniCaptureSettings& Setting
     SpatialRoot->SetNumberField(TEXT("horizontalFOVDegrees"), Settings.GetHorizontalFOVDegrees());
     SpatialRoot->SetNumberField(TEXT("verticalFOVDegrees"), Settings.GetVerticalFOVDegrees());
 
-    FString SpatialJson;
-    TSharedRef<TJsonWriter<>> SpatialWriter = TJsonWriterFactory<>::Create(&SpatialJson);
-    if (!FJsonSerializer::Serialize(SpatialRoot, SpatialWriter))
+    bool bSuccess = true;
+
+    if (Settings.bWriteSpatialMetadata)
     {
-        return false;
+        FString SpatialJson;
+        TSharedRef<TJsonWriter<>> SpatialWriter = TJsonWriterFactory<>::Create(&SpatialJson);
+        if (!FJsonSerializer::Serialize(SpatialRoot, SpatialWriter))
+        {
+            bSuccess = false;
+        }
+        else
+        {
+            const FString SpatialPath = OutputDirectory / (BaseFileName + TEXT("_SpatialMetadata.json"));
+            if (!FFileHelper::SaveStringToFile(SpatialJson, *SpatialPath))
+            {
+                bSuccess = false;
+            }
+        }
     }
 
-    const FString SpatialPath = OutputDirectory / (BaseFileName + TEXT("_SpatialMetadata.json"));
-    if (!FFileHelper::SaveStringToFile(SpatialJson, *SpatialPath))
+    if (!Settings.bWriteXMPMetadata)
     {
-        return false;
+        return bSuccess;
     }
 
     const FString XMPString = FString::Printf(
@@ -322,7 +350,12 @@ bool FOmniCaptureMuxer::WriteSpatialMetadata(const FOmniCaptureSettings& Setting
         static_cast<double>(Settings.GetVerticalFOVDegrees()));
 
     const FString XMPPath = OutputDirectory / (BaseFileName + TEXT("_VRMetadata.xmp"));
-    return FFileHelper::SaveStringToFile(XMPString, *XMPPath);
+    if (!FFileHelper::SaveStringToFile(XMPString, *XMPPath))
+    {
+        bSuccess = false;
+    }
+
+    return bSuccess;
 }
 
 bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath) const
@@ -427,30 +460,33 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
         CommandLine += TEXT(" -c:v copy");
     }
 
-    FString MetadataArgs = FString::Printf(TEXT(" -metadata:s:v:0 spherical_video=1 -metadata:s:v:0 projection=equirectangular -metadata:s:v:0 stereo_mode=%s"), StereoMode);
-    MetadataArgs += TEXT(" -metadata:s:v:0 spatial_audio=0 -metadata:s:v:0 stitching_software=OmniCapture");
-    MetadataArgs += TEXT(" -metadata:s:v:0 projection_pose_yaw_degrees=0 -metadata:s:v:0 projection_pose_pitch_degrees=0 -metadata:s:v:0 projection_pose_roll_degrees=0");
-    if (bHalfSphere)
+    if (Settings.bInjectFFmpegMetadata)
     {
-        MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-90 -metadata:s:v:0 bound_right=90 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
+        FString MetadataArgs = FString::Printf(TEXT(" -metadata:s:v:0 spherical_video=1 -metadata:s:v:0 projection=equirectangular -metadata:s:v:0 stereo_mode=%s"), StereoMode);
+        MetadataArgs += TEXT(" -metadata:s:v:0 spatial_audio=0 -metadata:s:v:0 stitching_software=OmniCapture");
+        MetadataArgs += TEXT(" -metadata:s:v:0 projection_pose_yaw_degrees=0 -metadata:s:v:0 projection_pose_pitch_degrees=0 -metadata:s:v:0 projection_pose_roll_degrees=0");
+        if (bHalfSphere)
+        {
+            MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-90 -metadata:s:v:0 bound_right=90 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
+        }
+        else
+        {
+            MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-180 -metadata:s:v:0 bound_right=180 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
+        }
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 view=%s"), ViewTag);
+        MetadataArgs += TEXT(" -metadata:s:v:0 spherical=1");
+        MetadataArgs += TEXT(" -metadata:s:v:0 gpano:ProjectionType=equirectangular");
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:StereoMode=%s"), StereoMode);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:FullPanoWidthPixels=%d"), FullPanoWidth);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:FullPanoHeightPixels=%d"), FullPanoHeight);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaImageWidthPixels=%d"), OutputSize.X);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaImageHeightPixels=%d"), OutputSize.Y);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaLeftPixels=%d"), CroppedLeft);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaTopPixels=%d"), CroppedTop);
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:InitialHorizontalFOVDegrees=%.2f"), static_cast<double>(Settings.GetHorizontalFOVDegrees()));
+        MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:InitialVerticalFOVDegrees=%.2f"), static_cast<double>(Settings.GetVerticalFOVDegrees()));
+        CommandLine += MetadataArgs;
     }
-    else
-    {
-        MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-180 -metadata:s:v:0 bound_right=180 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
-    }
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 view=%s"), ViewTag);
-    MetadataArgs += TEXT(" -metadata:s:v:0 spherical=1");
-    MetadataArgs += TEXT(" -metadata:s:v:0 gpano:ProjectionType=equirectangular");
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:StereoMode=%s"), StereoMode);
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:FullPanoWidthPixels=%d"), FullPanoWidth);
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:FullPanoHeightPixels=%d"), FullPanoHeight);
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaImageWidthPixels=%d"), OutputSize.X);
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaImageHeightPixels=%d"), OutputSize.Y);
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaLeftPixels=%d"), CroppedLeft);
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:CroppedAreaTopPixels=%d"), CroppedTop);
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:InitialHorizontalFOVDegrees=%.2f"), static_cast<double>(Settings.GetHorizontalFOVDegrees()));
-    MetadataArgs += FString::Printf(TEXT(" -metadata:s:v:0 gpano:InitialVerticalFOVDegrees=%.2f"), static_cast<double>(Settings.GetVerticalFOVDegrees()));
-    CommandLine += MetadataArgs;
     CommandLine += FString::Printf(TEXT(" -colorspace %s -color_primaries %s -color_trc %s"), *ColorSpaceArg, *ColorPrimariesArg, *ColorTransferArg);
 
     if (Settings.bForceConstantFrameRate)

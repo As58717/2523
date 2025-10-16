@@ -99,21 +99,26 @@ FString FOmniCaptureSettings::GetStereoModeMetadataTag() const
 
 int32 FOmniCaptureSettings::GetEncoderAlignmentRequirement() const
 {
+    int32 Alignment = 2;
+
     if (OutputFormat == EOmniOutputFormat::NVENCHardware)
     {
+        Alignment = FMath::Lcm(Alignment, 64);
+
         switch (NVENCColorFormat)
         {
         case EOmniCaptureColorFormat::P010:
-            return 4;
+            Alignment = FMath::Lcm(Alignment, 4);
+            break;
         case EOmniCaptureColorFormat::BGRA:
-            return 1;
-        case EOmniCaptureColorFormat::NV12:
+            Alignment = FMath::Max(1, Alignment);
+            break;
         default:
-            return 2;
+            break;
         }
     }
 
-    return 2;
+    return FMath::Max(1, Alignment);
 }
 
 float FOmniCaptureSettings::GetHorizontalFOVDegrees() const
