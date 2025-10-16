@@ -40,16 +40,17 @@ AOmniCapturePreviewActor::AOmniCapturePreviewActor()
     ScreenComponent->bHiddenInGame = true;
 }
 
-void AOmniCapturePreviewActor::Initialize(float InScale)
+void AOmniCapturePreviewActor::Initialize(float InScale, const FIntPoint& InitialResolution)
 {
     PreviewScale = FMath::Max(0.1f, InScale);
+    PreviewResolution = InitialResolution;
 
     if (UStaticMesh* PlaneMesh = LoadPreviewPlane())
     {
         ScreenComponent->SetStaticMesh(PlaneMesh);
     }
 
-    ScreenComponent->SetRelativeScale3D(FVector(PreviewScale, PreviewScale, PreviewScale));
+    UpdatePreviewAspectRatio(InitialResolution);
     ScreenComponent->SetRelativeRotation(FRotator(0.f, 180.f, 0.f));
     EnsureMaterial();
 }
@@ -93,6 +94,8 @@ void AOmniCapturePreviewActor::ResizePreviewTexture(const FIntPoint& Size)
         return;
     }
 
+    UpdatePreviewAspectRatio(Size);
+
     if (PreviewTexture && PreviewTexture->GetSizeX() == Size.X && PreviewTexture->GetSizeY() == Size.Y)
     {
         return;
@@ -105,6 +108,23 @@ void AOmniCapturePreviewActor::ResizePreviewTexture(const FIntPoint& Size)
     PreviewTexture->UpdateResource();
 
     ApplyTexture(PreviewTexture);
+}
+
+void AOmniCapturePreviewActor::UpdatePreviewAspectRatio(const FIntPoint& Size)
+{
+    if (!ScreenComponent || Size.X <= 0 || Size.Y <= 0)
+    {
+        return;
+    }
+
+    PreviewResolution = Size;
+
+    const float AspectRatio = static_cast<float>(Size.X) / static_cast<float>(Size.Y);
+    const float ClampedAspect = FMath::Max(0.25f, AspectRatio);
+
+    FVector Scale(PreviewScale, PreviewScale, PreviewScale);
+    Scale.Y *= ClampedAspect;
+    ScreenComponent->SetRelativeScale3D(Scale);
 }
 
 void AOmniCapturePreviewActor::ApplyTexture(UTexture2D* Texture)

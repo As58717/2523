@@ -9,6 +9,26 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 
+namespace
+{
+    const TCHAR* ToCoverageString(EOmniCaptureCoverage Coverage)
+    {
+        return Coverage == EOmniCaptureCoverage::HalfSphere ? TEXT("180") : TEXT("360");
+    }
+
+    const TCHAR* ToLayoutString(const FOmniCaptureSettings& Settings)
+    {
+        if (Settings.Mode == EOmniCaptureMode::Stereo)
+        {
+            return Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom
+                ? TEXT("StereoTopBottom")
+                : TEXT("StereoSideBySide");
+        }
+
+        return TEXT("Mono");
+    }
+}
+
 FString FOmniCaptureMuxer::ResolveFFmpegBinary(const FOmniCaptureSettings& Settings)
 {
     if (!Settings.PreferredFFmpegPath.IsEmpty())
@@ -117,11 +137,17 @@ bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, cons
     Root->SetStringField(TEXT("directory"), OutputDirectory);
     Root->SetStringField(TEXT("outputFormat"), Settings.OutputFormat == EOmniOutputFormat::PNGSequence ? TEXT("PNGSequence") : TEXT("NVENC"));
     Root->SetStringField(TEXT("mode"), Settings.Mode == EOmniCaptureMode::Stereo ? TEXT("Stereo") : TEXT("Mono"));
+    Root->SetStringField(TEXT("coverage"), ToCoverageString(Settings.Coverage));
     Root->SetStringField(TEXT("gamma"), Settings.Gamma == EOmniCaptureGamma::Linear ? TEXT("Linear") : TEXT("sRGB"));
     Root->SetNumberField(TEXT("resolution"), Settings.Resolution);
     Root->SetNumberField(TEXT("frameCount"), Frames.Num());
     Root->SetNumberField(TEXT("frameRate"), CalculateFrameRate(Frames));
     Root->SetStringField(TEXT("stereoLayout"), Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? TEXT("TopBottom") : TEXT("SideBySide"));
+    const FIntPoint OutputSize = Settings.GetEquirectResolution();
+    Root->SetNumberField(TEXT("outputWidth"), OutputSize.X);
+    Root->SetNumberField(TEXT("outputHeight"), OutputSize.Y);
+    Root->SetStringField(TEXT("outputLayout"), ToLayoutString(Settings));
+    Root->SetNumberField(TEXT("longitudeSpanRadians"), Settings.GetLongitudeSpanRadians());
 
     switch (Settings.ColorSpace)
     {
@@ -270,6 +296,8 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
         StereoMode = Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? TEXT("top-bottom") : TEXT("left-right");
     }
 
+    const bool bHalfSphere = Settings.Coverage == EOmniCaptureCoverage::HalfSphere;
+
     if (Settings.OutputFormat == EOmniOutputFormat::PNGSequence)
     {
         const TCHAR* CodecName = Settings.Codec == EOmniCaptureCodec::HEVC ? TEXT("libx265") : TEXT("libx264");
@@ -280,7 +308,18 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
         CommandLine += TEXT(" -c:v copy");
     }
 
-    CommandLine += FString::Printf(TEXT(" -metadata:s:v:0 spherical_video=1 -metadata:s:v:0 projection=equirectangular -metadata:s:v:0 stereo_mode=%s"), StereoMode);
+    FString MetadataArgs = FString::Printf(TEXT(" -metadata:s:v:0 spherical_video=1 -metadata:s:v:0 projection=equirectangular -metadata:s:v:0 stereo_mode=%s"), StereoMode);
+    MetadataArgs += TEXT(" -metadata:s:v:0 spatial_audio=0 -metadata:s:v:0 stitching_software=OmniCapture");
+    MetadataArgs += TEXT(" -metadata:s:v:0 projection_pose_yaw_degrees=0 -metadata:s:v:0 projection_pose_pitch_degrees=0 -metadata:s:v:0 projection_pose_roll_degrees=0");
+    if (bHalfSphere)
+    {
+        MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-90 -metadata:s:v:0 bound_right=90 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
+    }
+    else
+    {
+        MetadataArgs += TEXT(" -metadata:s:v:0 bound_left=-180 -metadata:s:v:0 bound_right=180 -metadata:s:v:0 bound_top=90 -metadata:s:v:0 bound_bottom=-90");
+    }
+    CommandLine += MetadataArgs;
     CommandLine += FString::Printf(TEXT(" -colorspace %s -color_primaries %s -color_trc %s"), *ColorSpaceArg, *ColorPrimariesArg, *ColorTransferArg);
 
     if (Settings.bForceConstantFrameRate)
