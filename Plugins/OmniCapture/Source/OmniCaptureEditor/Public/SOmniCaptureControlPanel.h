@@ -4,6 +4,9 @@
 #include "Widgets/SCompoundWidget.h"
 #include "OmniCaptureTypes.h"
 
+template <typename EnumType>
+using TEnumOptionPtr = TSharedPtr<TEnumAsByte<EnumType>>;
+
 class SListViewBase;
 template<typename ItemType> class SListView;
 class IDetailsView;
@@ -70,12 +73,12 @@ private:
     ECheckBoxState GetStereoModeCheckState(bool bStereo) const;
     void HandleStereoModeChanged(ECheckBoxState NewState, bool bStereo);
     FText GetStereoLayoutDisplayText() const;
-    void HandleStereoLayoutChanged(TSharedPtr<EOmniCaptureStereoLayout> NewValue, ESelectInfo::Type SelectInfo);
-    TSharedRef<SWidget> GenerateStereoLayoutOption(TSharedPtr<EOmniCaptureStereoLayout> InValue) const;
-    void HandleProjectionChanged(TSharedPtr<EOmniCaptureProjection> NewProjection, ESelectInfo::Type SelectInfo);
-    TSharedRef<SWidget> GenerateProjectionOption(TSharedPtr<EOmniCaptureProjection> InValue) const;
-    void HandleImageFormatChanged(TSharedPtr<EOmniCaptureImageFormat> NewFormat, ESelectInfo::Type SelectInfo);
-    TSharedRef<SWidget> GenerateImageFormatOption(TSharedPtr<EOmniCaptureImageFormat> InValue) const;
+    void HandleStereoLayoutChanged(TEnumOptionPtr<EOmniCaptureStereoLayout> NewValue, ESelectInfo::Type SelectInfo);
+    TSharedRef<SWidget> GenerateStereoLayoutOption(TEnumOptionPtr<EOmniCaptureStereoLayout> InValue) const;
+    void HandleProjectionChanged(TEnumOptionPtr<EOmniCaptureProjection> NewProjection, ESelectInfo::Type SelectInfo);
+    TSharedRef<SWidget> GenerateProjectionOption(TEnumOptionPtr<EOmniCaptureProjection> InValue) const;
+    void HandleImageFormatChanged(TEnumOptionPtr<EOmniCaptureImageFormat> NewFormat, ESelectInfo::Type SelectInfo);
+    TSharedRef<SWidget> GenerateImageFormatOption(TEnumOptionPtr<EOmniCaptureImageFormat> InValue) const;
 
     int32 GetPerEyeWidthValue() const;
     int32 GetPerEyeHeightValue() const;
@@ -94,16 +97,16 @@ private:
     ECheckBoxState GetPreviewViewCheckState(EOmniCapturePreviewView View) const;
     void HandlePreviewViewChanged(ECheckBoxState NewState, EOmniCapturePreviewView View);
 
-    TSharedPtr<EOmniCaptureStereoLayout> FindStereoLayoutOption(EOmniCaptureStereoLayout Layout) const;
-    TSharedPtr<EOmniOutputFormat> FindOutputFormatOption(EOmniOutputFormat Format) const;
-    TSharedPtr<EOmniCaptureCodec> FindCodecOption(EOmniCaptureCodec Codec) const;
-    TSharedPtr<EOmniCaptureColorFormat> FindColorFormatOption(EOmniCaptureColorFormat Format) const;
-    TSharedPtr<EOmniCaptureProjection> FindProjectionOption(EOmniCaptureProjection Projection) const;
-    TSharedPtr<EOmniCaptureImageFormat> FindImageFormatOption(EOmniCaptureImageFormat Format) const;
+    TEnumOptionPtr<EOmniCaptureStereoLayout> FindStereoLayoutOption(EOmniCaptureStereoLayout Layout) const;
+    TEnumOptionPtr<EOmniOutputFormat> FindOutputFormatOption(EOmniOutputFormat Format) const;
+    TEnumOptionPtr<EOmniCaptureCodec> FindCodecOption(EOmniCaptureCodec Codec) const;
+    TEnumOptionPtr<EOmniCaptureColorFormat> FindColorFormatOption(EOmniCaptureColorFormat Format) const;
+    TEnumOptionPtr<EOmniCaptureProjection> FindProjectionOption(EOmniCaptureProjection Projection) const;
+    TEnumOptionPtr<EOmniCaptureImageFormat> FindImageFormatOption(EOmniCaptureImageFormat Format) const;
 
-    void HandleOutputFormatChanged(TSharedPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo);
-    void HandleCodecChanged(TSharedPtr<EOmniCaptureCodec> NewCodec, ESelectInfo::Type SelectInfo);
-    void HandleColorFormatChanged(TSharedPtr<EOmniCaptureColorFormat> NewFormat, ESelectInfo::Type SelectInfo);
+    void HandleOutputFormatChanged(TEnumOptionPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo);
+    void HandleCodecChanged(TEnumOptionPtr<EOmniCaptureCodec> NewCodec, ESelectInfo::Type SelectInfo);
+    void HandleColorFormatChanged(TEnumOptionPtr<EOmniCaptureColorFormat> NewFormat, ESelectInfo::Type SelectInfo);
 
     int32 GetTargetBitrate() const;
     int32 GetMaxBitrate() const;
@@ -142,17 +145,17 @@ private:
     TSharedPtr<SListView<TSharedPtr<FString>>> WarningListView;
     TWeakPtr<FActiveTimerHandle> ActiveTimerHandle;
 
-    TArray<TSharedPtr<EOmniCaptureStereoLayout>> StereoLayoutOptions;
-    TArray<TSharedPtr<EOmniOutputFormat>> OutputFormatOptions;
-    TArray<TSharedPtr<EOmniCaptureCodec>> CodecOptions;
-    TArray<TSharedPtr<EOmniCaptureColorFormat>> ColorFormatOptions;
-    TArray<TSharedPtr<EOmniCaptureProjection>> ProjectionOptions;
-    TArray<TSharedPtr<EOmniCaptureImageFormat>> ImageFormatOptions;
+    TArray<TEnumOptionPtr<EOmniCaptureStereoLayout>> StereoLayoutOptions;
+    TArray<TEnumOptionPtr<EOmniOutputFormat>> OutputFormatOptions;
+    TArray<TEnumOptionPtr<EOmniCaptureCodec>> CodecOptions;
+    TArray<TEnumOptionPtr<EOmniCaptureColorFormat>> ColorFormatOptions;
+    TArray<TEnumOptionPtr<EOmniCaptureProjection>> ProjectionOptions;
+    TArray<TEnumOptionPtr<EOmniCaptureImageFormat>> ImageFormatOptions;
 
-    TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureStereoLayout>>> StereoLayoutCombo;
-    TSharedPtr<SComboBox<TSharedPtr<EOmniOutputFormat>>> OutputFormatCombo;
-    TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureCodec>>> CodecCombo;
-    TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureColorFormat>>> ColorFormatCombo;
-    TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureProjection>>> ProjectionCombo;
-    TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureImageFormat>>> ImageFormatCombo;
+    TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureStereoLayout>>> StereoLayoutCombo;
+    TSharedPtr<SComboBox<TEnumOptionPtr<EOmniOutputFormat>>> OutputFormatCombo;
+    TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureCodec>>> CodecCombo;
+    TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureColorFormat>>> ColorFormatCombo;
+    TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureProjection>>> ProjectionCombo;
+    TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureImageFormat>>> ImageFormatCombo;
 };

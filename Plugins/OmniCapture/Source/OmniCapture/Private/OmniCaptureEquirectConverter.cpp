@@ -14,7 +14,7 @@
 #include "RenderGraphUtils/Public/ComputeShaderUtils.h"
 #elif __has_include("RenderGraphUtils/ComputeShaderUtils.h")
 #include "RenderGraphUtils/ComputeShaderUtils.h"
-#else
+#elif __has_include("ComputeShaderUtils.h")
 #include "ComputeShaderUtils.h"
 #endif
 #include "RHICommandList.h"
