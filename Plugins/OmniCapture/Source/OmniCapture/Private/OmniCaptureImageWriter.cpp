@@ -44,18 +44,24 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
     case EOmniCaptureImageFormat::JPG:
         Task->Format = EImageFormat::JPEG;
         Task->CompressionQuality = static_cast<int32>(EImageCompressionQuality::Default);
+#if UE_VERSION_OLDER_THAN(5, 6, 0)
         Task->bWriteGammaCorrectedToSRGB = true;
+#endif
         break;
     case EOmniCaptureImageFormat::EXR:
         Task->Format = EImageFormat::EXR;
         Task->CompressionQuality = static_cast<int32>(EImageCompressionQuality::Uncompressed);
+#if UE_VERSION_OLDER_THAN(5, 6, 0)
         Task->bWriteGammaCorrectedToSRGB = false;
+#endif
         break;
     case EOmniCaptureImageFormat::PNG:
     default:
         Task->Format = EImageFormat::PNG;
         Task->CompressionQuality = static_cast<int32>(EImageCompressionQuality::Uncompressed);
+#if UE_VERSION_OLDER_THAN(5, 6, 0)
         Task->bWriteGammaCorrectedToSRGB = true;
+#endif
         break;
     }
 

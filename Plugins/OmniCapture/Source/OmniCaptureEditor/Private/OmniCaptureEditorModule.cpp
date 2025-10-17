@@ -7,6 +7,7 @@
 #include "Styling/AppStyle.h"
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
+#include "Misc/EngineVersionComparison.h"
 
 static const FName OmniCapturePanelTabName(TEXT("OmniCapturePanel"));
 
@@ -17,7 +18,11 @@ void FOmniCaptureEditorModule::StartupModule()
         .SetTooltipText(NSLOCTEXT("OmniCaptureEditor", "CapturePanelTooltip", "Open the Omni Capture control panel"))
         .SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"));
 
+#if UE_VERSION_OLDER_THAN(5, 6, 0)
     MenuRegistrationHandle = UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FOmniCaptureEditorModule::RegisterMenus));
+#else
+    MenuRegistrationHandle = UToolMenus::Get()->RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FOmniCaptureEditorModule::RegisterMenus));
+#endif
 
     if (const UOmniCaptureEditorSettings* Settings = GetDefault<UOmniCaptureEditorSettings>())
     {
@@ -34,7 +39,11 @@ void FOmniCaptureEditorModule::ShutdownModule()
     {
         if (MenuRegistrationHandle.IsValid())
         {
+#if UE_VERSION_OLDER_THAN(5, 6, 0)
             UToolMenus::UnregisterStartupCallback(MenuRegistrationHandle);
+#else
+            ToolMenus->UnregisterStartupCallback(MenuRegistrationHandle);
+#endif
         }
         ToolMenus->UnregisterOwner(this);
     }

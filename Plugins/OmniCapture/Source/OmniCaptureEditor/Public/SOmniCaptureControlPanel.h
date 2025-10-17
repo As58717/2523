@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
+#include "OmniCaptureTypes.h"
 
 class SListViewBase;
 template<typename ItemType> class SListView;
