@@ -92,46 +92,55 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
         return false;
     }
 
+    bool bWriteSuccessful = false;
+
     switch (Format)
     {
     case EOmniCaptureImageFormat::JPG:
         if (bIsLinear)
         {
             const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
-            return WriteJPEGFromLinear(*FloatData, FilePath);
+            bWriteSuccessful = WriteJPEGFromLinear(*FloatData, FilePath);
         }
         else
         {
             const TImagePixelData<FColor>* ColorData = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
-            return WriteJPEG(*ColorData, FilePath);
+            bWriteSuccessful = WriteJPEG(*ColorData, FilePath);
         }
+        break;
     case EOmniCaptureImageFormat::EXR:
         if (bIsLinear)
         {
             const TImagePixelData<FFloat16Color>* LinearData = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
-            return WriteEXR(*LinearData, FilePath);
+            bWriteSuccessful = WriteEXR(*LinearData, FilePath);
         }
         else
         {
             const TImagePixelData<FColor>* SRGBData = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
-            return WriteEXRFromColor(*SRGBData, FilePath);
+            bWriteSuccessful = WriteEXRFromColor(*SRGBData, FilePath);
         }
+        break;
     case EOmniCaptureImageFormat::PNG:
     default:
         if (bIsLinear)
         {
             const TImagePixelData<FFloat16Color>* LinearData = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
-            return WritePNGFromLinear(*LinearData, FilePath);
+            bWriteSuccessful = WritePNGFromLinear(*LinearData, FilePath);
         }
         else
         {
             const TImagePixelData<FColor>* PngData = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
-            return WritePNG(*PngData, FilePath);
+            bWriteSuccessful = WritePNG(*PngData, FilePath);
         }
+        break;
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("Unsupported pixel data type for OmniCapture image export (%s)"), *FilePath);
-    return false;
+    if (!bWriteSuccessful)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Unsupported pixel data type for OmniCapture image export (%s)"), *FilePath);
+    }
+
+    return bWriteSuccessful;
 }
 
 bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const
