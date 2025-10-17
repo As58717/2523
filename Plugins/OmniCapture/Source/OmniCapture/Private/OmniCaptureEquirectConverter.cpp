@@ -912,7 +912,7 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
 #elif defined(GSupportsComputeShaders)
     bSupportsCompute = bSupportsCompute && GSupportsComputeShaders;
 #else
-    bSupportsCompute = bSupportsCompute && RHISupportsComputeShaders(GMaxRHIShaderPlatform);
+    bSupportsCompute = false;
 #endif
     if (!bSupportsCompute)
     {
