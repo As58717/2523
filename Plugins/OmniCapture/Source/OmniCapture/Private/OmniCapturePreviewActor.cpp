@@ -183,7 +183,7 @@ void AOmniCapturePreviewActor::UpdatePreviewTexture(const FOmniCaptureEquirectRe
     if (bShowSingleEye)
     {
         const int32 OutputPixels = TargetSize.X * TargetSize.Y;
-        PreviewScratchBuffer.SetNum(OutputPixels, false);
+        PreviewScratchBuffer.SetNum(OutputPixels, EAllowShrinking::No);
 
         if (Settings.StereoLayout == EOmniCaptureStereoLayout::SideBySide)
         {

@@ -92,7 +92,11 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
         DeviceDescription = PrimaryBrand;
     }
     const FGPUDriverInfo DriverInfo = FPlatformMisc::GetGPUDriverInfo(DeviceDescription);
+#if UE_VERSION_NEWER_THAN(5, 5, 0)
+    Caps.DriverVersion = DriverInfo.UserDriverVersion;
+#else
     Caps.DriverVersion = DriverInfo.DriverVersion;
+#endif
 #endif
 
     return Caps;
