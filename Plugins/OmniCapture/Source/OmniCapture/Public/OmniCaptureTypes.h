@@ -67,7 +67,7 @@ struct FOmniCaptureQuality
 };
 
 USTRUCT(BlueprintType)
-struct FOmniCaptureSettings
+struct OMNICAPTURE_API FOmniCaptureSettings
 {
         GENERATED_BODY()
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") EOmniCaptureMode Mode = EOmniCaptureMode::Mono;
