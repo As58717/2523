@@ -41,8 +41,6 @@ void FOmniCaptureEditorModule::ShutdownModule()
         {
 #if UE_VERSION_OLDER_THAN(5, 6, 0)
             UToolMenus::UnregisterStartupCallback(MenuRegistrationHandle);
-#else
-            ToolMenus->UnregisterStartupCallback(MenuRegistrationHandle);
 #endif
         }
         ToolMenus->UnregisterOwner(this);

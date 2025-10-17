@@ -13,11 +13,13 @@ namespace UE::ImageWriteQueue
 }
 
 #if UE_VERSION_NEWER_THAN(5, 5, 0)
-using FImageWriteQueue = UE::ImageWriteQueue::FImageWriteQueue;
-using FImageWriteTask = UE::ImageWriteQueue::FImageWriteTask;
+using FImageWriteQueueType = UE::ImageWriteQueue::FImageWriteQueue;
+using FImageWriteTaskType = UE::ImageWriteQueue::FImageWriteTask;
 #else
 class FImageWriteQueue;
 class FImageWriteTask;
+using FImageWriteQueueType = FImageWriteQueue;
+using FImageWriteTaskType = FImageWriteTask;
 #endif
 
 class OMNICAPTURE_API FOmniCaptureImageWriter
@@ -33,8 +35,8 @@ public:
     TArray<FOmniCaptureFrameMetadata> ConsumeCapturedFrames();
 
 private:
-    TUniquePtr<FImageWriteQueue> OwnedQueue;
-    FImageWriteQueue* ImageWriteQueue = nullptr;
+    TUniquePtr<FImageWriteQueueType> OwnedQueue;
+    FImageWriteQueueType* ImageWriteQueue = nullptr;
     FString OutputDirectory;
     FString SequenceBaseName;
     EOmniCaptureImageFormat TargetFormat = EOmniCaptureImageFormat::PNG;

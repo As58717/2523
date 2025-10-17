@@ -94,7 +94,7 @@ namespace
             SHADER_PARAMETER(int32, Format)
             SHADER_PARAMETER(int32, ColorSpace)
             SHADER_PARAMETER(int32, bLinearInput)
-            SHADER_PARAMETER_TEXTURE(Texture2D<float4>, SourceTexture)
+            SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceTexture)
             SHADER_PARAMETER_SAMPLER(SamplerState, SourceSampler)
             SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, LumaOutput)
         END_SHADER_PARAMETER_STRUCT()
@@ -119,7 +119,7 @@ namespace
             SHADER_PARAMETER(int32, Format)
             SHADER_PARAMETER(int32, ColorSpace)
             SHADER_PARAMETER(int32, bLinearInput)
-            SHADER_PARAMETER_TEXTURE(Texture2D<float4>, SourceTexture)
+            SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceTexture)
             SHADER_PARAMETER_SAMPLER(SamplerState, SourceSampler)
             SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint2>, ChromaOutput)
         END_SHADER_PARAMETER_STRUCT()
@@ -144,7 +144,7 @@ namespace
             SHADER_PARAMETER(int32, Format)
             SHADER_PARAMETER(int32, ColorSpace)
             SHADER_PARAMETER(int32, bLinearInput)
-            SHADER_PARAMETER_TEXTURE(Texture2D<float4>, SourceTexture)
+            SHADER_PARAMETER_RDG_TEXTURE(Texture2D<float4>, SourceTexture)
             SHADER_PARAMETER_SAMPLER(SamplerState, SourceSampler)
             SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<uint>, OutputTexture)
         END_SHADER_PARAMETER_STRUCT()
@@ -180,7 +180,7 @@ namespace
         OutFace.Pixels.Reset();
         FReadSurfaceDataFlags Flags(RCM_MinMax);
         Flags.SetLinearToGamma(false);
-        if (!Resource->ReadFloat16Pixels(OutFace.Pixels, FIntRect(), Flags))
+        if (!Resource->ReadFloat16Pixels(OutFace.Pixels, Flags, FIntRect()))
         {
             return false;
         }
@@ -265,7 +265,7 @@ namespace
             }
         }
 
-        OutUV = (OutUV + FVector2D::OneVector) * 0.5f;
+        OutUV = (OutUV + FVector2D(1.0, 1.0)) * 0.5f;
 
         const double Resolution = static_cast<double>(FMath::Max(1, FaceResolution));
         const double Scale = FMath::Lerp(1.0, (Resolution - 1.0) / Resolution, SeamStrength);
@@ -582,31 +582,47 @@ namespace
         }
 
         FRHIGPUTextureReadback Readback(TEXT("OmniEquirectReadback"));
-        Readback.EnqueueCopy(RHICmdList, OutputTextureRHI, FIntRect(0, 0, OutputWidth, OutputHeight));
+        Readback.EnqueueCopy(RHICmdList, OutputTextureRHI, FResolveRect(0, 0, OutputWidth, OutputHeight));
         RHICmdList.SubmitCommandsAndFlushGPU();
-        Readback.WaitCompletion();
+
+        while (!Readback.IsReady())
+        {
+            FPlatformProcess::SleepNoStats(0.001f);
+        }
 
         const uint32 PixelCount = OutputWidth * OutputHeight;
         const uint32 BytesPerPixel = sizeof(FFloat16Color);
-        const uint32 ExpectedSize = PixelCount * BytesPerPixel;
-        const uint8* RawData = static_cast<const uint8*>(Readback.Lock(ExpectedSize));
+        int32 RowPitchInPixels = 0;
+        const uint8* RawData = static_cast<const uint8*>(Readback.Lock(RowPitchInPixels));
 
         if (RawData)
         {
-            const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
+            const uint32 RowPitch = RowPitchInPixels > 0 ? static_cast<uint32>(RowPitchInPixels) : static_cast<uint32>(OutputWidth);
             if (bUseLinear)
             {
                 TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(FIntPoint(OutputWidth, OutputHeight));
                 PixelData->Pixels.SetNum(PixelCount);
-                FMemory::Memcpy(PixelData->Pixels.GetData(), RawData, ExpectedSize);
+
+                FFloat16Color* DestData = PixelData->Pixels.GetData();
+                const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
+                for (int32 Row = 0; Row < OutputHeight; ++Row)
+                {
+                    const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
+                    FMemory::Memcpy(DestData + Row * OutputWidth, SourceRow, OutputWidth * BytesPerPixel);
+                }
+
                 OutResult.PixelData = MoveTemp(PixelData);
 
                 OutResult.PreviewPixels.SetNum(PixelCount);
-                for (uint32 Index = 0; Index < PixelCount; ++Index)
+                const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(OutResult.PixelData.Get());
+                if (FloatData)
                 {
-                    const FFloat16Color& Source = SourcePixels[Index];
-                    const FLinearColor Linear(Source.R.GetFloat(), Source.G.GetFloat(), Source.B.GetFloat(), Source.A.GetFloat());
-                    OutResult.PreviewPixels[Index] = Linear.ToFColor(true);
+                    for (uint32 Index = 0; Index < PixelCount; ++Index)
+                    {
+                        const FFloat16Color& Source = FloatData->Pixels[Index];
+                        const FLinearColor Linear(Source.R.GetFloat(), Source.G.GetFloat(), Source.B.GetFloat(), Source.A.GetFloat());
+                        OutResult.PreviewPixels[Index] = Linear.ToFColor(true);
+                    }
                 }
             }
             else
@@ -615,12 +631,19 @@ namespace
                 PixelData->Pixels.SetNum(PixelCount);
                 OutResult.PreviewPixels.SetNum(PixelCount);
 
-                for (uint32 Index = 0; Index < PixelCount; ++Index)
+                const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
+                for (int32 Row = 0; Row < OutputHeight; ++Row)
                 {
-                    const FLinearColor Linear(SourcePixels[Index].R.GetFloat(), SourcePixels[Index].G.GetFloat(), SourcePixels[Index].B.GetFloat(), SourcePixels[Index].A.GetFloat());
-                    const FColor SRGB = Linear.ToFColor(true);
-                    PixelData->Pixels[Index] = SRGB;
-                    OutResult.PreviewPixels[Index] = SRGB;
+                    const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
+                    FColor* DestRow = PixelData->Pixels.GetData() + Row * OutputWidth;
+                    for (int32 Column = 0; Column < OutputWidth; ++Column)
+                    {
+                        const FFloat16Color& Pixel = SourceRow[Column];
+                        const FLinearColor Linear(Pixel.R.GetFloat(), Pixel.G.GetFloat(), Pixel.B.GetFloat(), Pixel.A.GetFloat());
+                        const FColor SRGB = Linear.ToFColor(true);
+                        DestRow[Column] = SRGB;
+                        OutResult.PreviewPixels[Row * OutputWidth + Column] = SRGB;
+                    }
                 }
 
                 OutResult.PixelData = MoveTemp(PixelData);
@@ -883,7 +906,16 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
         return Result;
     }
 
-    const bool bSupportsCompute = GDynamicRHI != nullptr && GRHISupportsComputeShaders;
+    bool bSupportsCompute = GDynamicRHI != nullptr;
+#if UE_VERSION_NEWER_THAN(5, 5, 0)
+    if (bSupportsCompute)
+    {
+        const FRHICapabilities& RHICaps = GDynamicRHI->RHIGetCapabilities();
+        bSupportsCompute = RHICaps.SupportsComputeShaders();
+    }
+#else
+    bSupportsCompute = bSupportsCompute && GRHISupportsComputeShaders;
+#endif
     if (!bSupportsCompute)
     {
         ConvertOnCPU(Settings, LeftEye, RightEye, Result);
@@ -949,26 +981,30 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToPlanar(const 
     if (Result.bIsLinear)
     {
         TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutputSize);
-        PixelData->Pixels.SetNum(PixelCount);
-        if (!Resource->ReadFloat16Pixels(PixelData->Pixels))
+        TArray<FFloat16Color> TempPixels;
+        FReadSurfaceDataFlags ReadFlags(RCM_UNorm, CubeFace_MAX);
+        if (!Resource->ReadFloat16Pixels(TempPixels, ReadFlags, FIntRect()))
         {
             PixelData.Reset();
         }
         else
         {
+            PixelData->Pixels = MoveTemp(TempPixels);
             Result.PixelData = MoveTemp(PixelData);
         }
     }
     else
     {
         TUniquePtr<TImagePixelData<FColor>> PixelData = MakeUnique<TImagePixelData<FColor>>(OutputSize);
-        PixelData->Pixels.SetNum(PixelCount);
-        if (!Resource->ReadPixels(PixelData->Pixels))
+        TArray<FColor> TempPixels;
+        FReadSurfaceDataFlags ReadFlags(RCM_UNorm, CubeFace_MAX);
+        if (!Resource->ReadPixels(TempPixels, ReadFlags, FIntRect()))
         {
             PixelData.Reset();
         }
         else
         {
+            PixelData->Pixels = MoveTemp(TempPixels);
             Result.PixelData = MoveTemp(PixelData);
         }
     }

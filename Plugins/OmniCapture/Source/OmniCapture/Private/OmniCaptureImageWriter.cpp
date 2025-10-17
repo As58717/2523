@@ -35,7 +35,7 @@ void FOmniCaptureImageWriter::Initialize(const FOmniCaptureSettings& Settings, c
     ImageWriteQueue = &UE::ImageWriteQueue::IImageWriteQueueModule::Get().GetWriteQueue();
     OwnedQueue.Reset();
 #else
-    OwnedQueue = MakeUnique<FImageWriteQueue>();
+    OwnedQueue = MakeUnique<FImageWriteQueueType>();
     ImageWriteQueue = OwnedQueue.Get();
 #endif
 }
@@ -47,7 +47,7 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
         return;
     }
 
-    TUniquePtr<FImageWriteTask> Task = MakeUnique<FImageWriteTask>();
+    TUniquePtr<FImageWriteTaskType> Task = MakeUnique<FImageWriteTaskType>();
     Task->Filename = OutputDirectory / FrameFileName;
     Task->bOverwriteFile = true;
     Task->PixelData = MoveTemp(Frame->PixelData);

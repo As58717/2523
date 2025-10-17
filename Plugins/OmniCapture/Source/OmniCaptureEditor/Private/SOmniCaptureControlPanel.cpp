@@ -149,30 +149,30 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
         .SelectionMode(ESelectionMode::None);
 
     StereoLayoutOptions.Reset();
-    StereoLayoutOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureStereoLayout>>(EOmniCaptureStereoLayout::SideBySide));
-    StereoLayoutOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureStereoLayout>>(EOmniCaptureStereoLayout::TopBottom));
+    StereoLayoutOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureStereoLayout>>(EOmniCaptureStereoLayout::SideBySide));
+    StereoLayoutOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureStereoLayout>>(EOmniCaptureStereoLayout::TopBottom));
 
     OutputFormatOptions.Reset();
-    OutputFormatOptions.Add(MakeShared<TEnumAsByte<EOmniOutputFormat>>(EOmniOutputFormat::NVENCHardware));
-    OutputFormatOptions.Add(MakeShared<TEnumAsByte<EOmniOutputFormat>>(EOmniOutputFormat::ImageSequence));
+    OutputFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniOutputFormat>>(EOmniOutputFormat::NVENCHardware));
+    OutputFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniOutputFormat>>(EOmniOutputFormat::ImageSequence));
 
     CodecOptions.Reset();
-    CodecOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureCodec>>(EOmniCaptureCodec::HEVC));
-    CodecOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureCodec>>(EOmniCaptureCodec::H264));
+    CodecOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureCodec>>(EOmniCaptureCodec::HEVC));
+    CodecOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureCodec>>(EOmniCaptureCodec::H264));
 
     ColorFormatOptions.Reset();
-    ColorFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureColorFormat>>(EOmniCaptureColorFormat::NV12));
-    ColorFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureColorFormat>>(EOmniCaptureColorFormat::P010));
-    ColorFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureColorFormat>>(EOmniCaptureColorFormat::BGRA));
+    ColorFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureColorFormat>>(EOmniCaptureColorFormat::NV12));
+    ColorFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureColorFormat>>(EOmniCaptureColorFormat::P010));
+    ColorFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureColorFormat>>(EOmniCaptureColorFormat::BGRA));
 
     ProjectionOptions.Reset();
-    ProjectionOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureProjection>>(EOmniCaptureProjection::Equirectangular));
-    ProjectionOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureProjection>>(EOmniCaptureProjection::Planar2D));
+    ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::Equirectangular));
+    ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::Planar2D));
 
     ImageFormatOptions.Reset();
-    ImageFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::PNG));
-    ImageFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::JPG));
-    ImageFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::EXR));
+    ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::PNG));
+    ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::JPG));
+    ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::EXR));
 
     auto BuildSection = [](const FText& Title, const FText& Description, const TSharedRef<SWidget>& Content) -> TSharedRef<SWidget>
     {

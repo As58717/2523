@@ -5,7 +5,23 @@
 #include "OmniCaptureTypes.h"
 
 template <typename EnumType>
-using TEnumOptionPtr = TSharedPtr<TEnumAsByte<EnumType>>;
+struct TEnumOptionValue
+{
+    explicit TEnumOptionValue(EnumType InValue)
+        : Value(InValue)
+    {
+    }
+
+    EnumType GetValue() const
+    {
+        return Value;
+    }
+
+    EnumType Value;
+};
+
+template <typename EnumType>
+using TEnumOptionPtr = TSharedPtr<TEnumOptionValue<EnumType>>;
 
 class SListViewBase;
 template<typename ItemType> class SListView;
