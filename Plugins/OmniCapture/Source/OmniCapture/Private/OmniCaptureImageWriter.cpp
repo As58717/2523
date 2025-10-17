@@ -10,6 +10,13 @@
 #include "ImageWriteTypes.h"
 #endif
 
+#if __has_include("ImageWriteQueue/Public/ImageWriteQueueModule.h")
+#include "ImageWriteQueue/Public/ImageWriteQueueModule.h"
+#define OMNICAPTURE_USE_IMAGEWRITE_MODULE 1
+#else
+#define OMNICAPTURE_USE_IMAGEWRITE_MODULE 0
+#endif
+
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 
@@ -24,12 +31,18 @@ void FOmniCaptureImageWriter::Initialize(const FOmniCaptureSettings& Settings, c
     IFileManager::Get().MakeDirectory(*OutputDirectory, true);
     TargetFormat = Settings.ImageFormat;
 
-    ImageWriteQueue = MakeUnique<FImageWriteQueue>();
+#if OMNICAPTURE_USE_IMAGEWRITE_MODULE && UE_VERSION_NEWER_THAN(5, 5, 0)
+    ImageWriteQueue = &UE::ImageWriteQueue::IImageWriteQueueModule::Get().GetWriteQueue();
+    OwnedQueue.Reset();
+#else
+    OwnedQueue = MakeUnique<FImageWriteQueue>();
+    ImageWriteQueue = OwnedQueue.Get();
+#endif
 }
 
 void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, const FString& FrameFileName)
 {
-    if (!ImageWriteQueue.IsValid() || !Frame.IsValid())
+    if (ImageWriteQueue == nullptr || !Frame.IsValid())
     {
         return;
     }
@@ -73,10 +86,13 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
 
 void FOmniCaptureImageWriter::Flush()
 {
-    if (ImageWriteQueue.IsValid())
+    if (ImageWriteQueue != nullptr)
     {
         ImageWriteQueue->Flush();
-        ImageWriteQueue.Reset();
+        ImageWriteQueue = nullptr;
+#if !(OMNICAPTURE_USE_IMAGEWRITE_MODULE && UE_VERSION_NEWER_THAN(5, 5, 0))
+        OwnedQueue.Reset();
+#endif
     }
 }
 
@@ -87,3 +103,5 @@ TArray<FOmniCaptureFrameMetadata> FOmniCaptureImageWriter::ConsumeCapturedFrames
     CapturedMetadata.Reset();
     return Result;
 }
+
+#undef OMNICAPTURE_USE_IMAGEWRITE_MODULE

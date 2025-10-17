@@ -4,12 +4,15 @@
 #include "OmniCaptureTypes.h"
 #include "Misc/EngineVersionComparison.h"
 
-#if UE_VERSION_NEWER_THAN(5, 5, 0)
 namespace UE::ImageWriteQueue
 {
+#if UE_VERSION_NEWER_THAN(5, 5, 0)
     class FImageWriteQueue;
     class FImageWriteTask;
+#endif
 }
+
+#if UE_VERSION_NEWER_THAN(5, 5, 0)
 using FImageWriteQueue = UE::ImageWriteQueue::FImageWriteQueue;
 using FImageWriteTask = UE::ImageWriteQueue::FImageWriteTask;
 #else
@@ -30,7 +33,8 @@ public:
     TArray<FOmniCaptureFrameMetadata> ConsumeCapturedFrames();
 
 private:
-    TUniquePtr<FImageWriteQueue> ImageWriteQueue;
+    TUniquePtr<FImageWriteQueue> OwnedQueue;
+    FImageWriteQueue* ImageWriteQueue = nullptr;
     FString OutputDirectory;
     FString SequenceBaseName;
     EOmniCaptureImageFormat TargetFormat = EOmniCaptureImageFormat::PNG;

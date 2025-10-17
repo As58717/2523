@@ -149,30 +149,30 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
         .SelectionMode(ESelectionMode::None);
 
     StereoLayoutOptions.Reset();
-    StereoLayoutOptions.Add(MakeShared<EOmniCaptureStereoLayout>(EOmniCaptureStereoLayout::SideBySide));
-    StereoLayoutOptions.Add(MakeShared<EOmniCaptureStereoLayout>(EOmniCaptureStereoLayout::TopBottom));
+    StereoLayoutOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureStereoLayout>>(EOmniCaptureStereoLayout::SideBySide));
+    StereoLayoutOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureStereoLayout>>(EOmniCaptureStereoLayout::TopBottom));
 
     OutputFormatOptions.Reset();
-    OutputFormatOptions.Add(MakeShared<EOmniOutputFormat>(EOmniOutputFormat::NVENCHardware));
-    OutputFormatOptions.Add(MakeShared<EOmniOutputFormat>(EOmniOutputFormat::ImageSequence));
+    OutputFormatOptions.Add(MakeShared<TEnumAsByte<EOmniOutputFormat>>(EOmniOutputFormat::NVENCHardware));
+    OutputFormatOptions.Add(MakeShared<TEnumAsByte<EOmniOutputFormat>>(EOmniOutputFormat::ImageSequence));
 
     CodecOptions.Reset();
-    CodecOptions.Add(MakeShared<EOmniCaptureCodec>(EOmniCaptureCodec::HEVC));
-    CodecOptions.Add(MakeShared<EOmniCaptureCodec>(EOmniCaptureCodec::H264));
+    CodecOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureCodec>>(EOmniCaptureCodec::HEVC));
+    CodecOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureCodec>>(EOmniCaptureCodec::H264));
 
     ColorFormatOptions.Reset();
-    ColorFormatOptions.Add(MakeShared<EOmniCaptureColorFormat>(EOmniCaptureColorFormat::NV12));
-    ColorFormatOptions.Add(MakeShared<EOmniCaptureColorFormat>(EOmniCaptureColorFormat::P010));
-    ColorFormatOptions.Add(MakeShared<EOmniCaptureColorFormat>(EOmniCaptureColorFormat::BGRA));
+    ColorFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureColorFormat>>(EOmniCaptureColorFormat::NV12));
+    ColorFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureColorFormat>>(EOmniCaptureColorFormat::P010));
+    ColorFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureColorFormat>>(EOmniCaptureColorFormat::BGRA));
 
     ProjectionOptions.Reset();
-    ProjectionOptions.Add(MakeShared<EOmniCaptureProjection>(EOmniCaptureProjection::Equirectangular));
-    ProjectionOptions.Add(MakeShared<EOmniCaptureProjection>(EOmniCaptureProjection::Planar2D));
+    ProjectionOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureProjection>>(EOmniCaptureProjection::Equirectangular));
+    ProjectionOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureProjection>>(EOmniCaptureProjection::Planar2D));
 
     ImageFormatOptions.Reset();
-    ImageFormatOptions.Add(MakeShared<EOmniCaptureImageFormat>(EOmniCaptureImageFormat::PNG));
-    ImageFormatOptions.Add(MakeShared<EOmniCaptureImageFormat>(EOmniCaptureImageFormat::JPG));
-    ImageFormatOptions.Add(MakeShared<EOmniCaptureImageFormat>(EOmniCaptureImageFormat::EXR));
+    ImageFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::PNG));
+    ImageFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::JPG));
+    ImageFormatOptions.Add(MakeShared<TEnumAsByte<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::EXR));
 
     auto BuildSection = [](const FText& Title, const FText& Description, const TSharedRef<SWidget>& Content) -> TSharedRef<SWidget>
     {
@@ -223,7 +223,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             .AutoWidth()
             .Padding(8.f, 0.f, 0.f, 0.f)
             [
-                SAssignNew(ProjectionCombo, SComboBox<TSharedPtr<EOmniCaptureProjection>>)
+                SAssignNew(ProjectionCombo, SComboBox<TEnumOptionPtr<EOmniCaptureProjection>>)
                 .OptionsSource(&ProjectionOptions)
                 .OnGenerateWidget(this, &SOmniCaptureControlPanel::GenerateProjectionOption)
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleProjectionChanged)
@@ -313,7 +313,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             .AutoWidth()
             .Padding(8.f, 0.f, 0.f, 0.f)
             [
-                SAssignNew(StereoLayoutCombo, SComboBox<TSharedPtr<EOmniCaptureStereoLayout>>)
+                SAssignNew(StereoLayoutCombo, SComboBox<TEnumOptionPtr<EOmniCaptureStereoLayout>>)
                 .OptionsSource(&StereoLayoutOptions)
                 .OnGenerateWidget(this, &SOmniCaptureControlPanel::GenerateStereoLayoutOption)
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleStereoLayoutChanged)
@@ -605,11 +605,12 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             ]
             + SGridPanel::Slot(1, 0)
             [
-                SAssignNew(OutputFormatCombo, SComboBox<TSharedPtr<EOmniOutputFormat>>)
+                SAssignNew(OutputFormatCombo, SComboBox<TEnumOptionPtr<EOmniOutputFormat>>)
                 .OptionsSource(&OutputFormatOptions)
-                .OnGenerateWidget_Lambda([](TSharedPtr<EOmniOutputFormat> InItem)
+                .OnGenerateWidget_Lambda([](TEnumOptionPtr<EOmniOutputFormat> InItem)
                 {
-                    return SNew(STextBlock).Text(OutputFormatToText(InItem.IsValid() ? *InItem : EOmniOutputFormat::ImageSequence));
+                    const EOmniOutputFormat Value = InItem.IsValid() ? static_cast<EOmniOutputFormat>(InItem->GetValue()) : EOmniOutputFormat::ImageSequence;
+                    return SNew(STextBlock).Text(OutputFormatToText(Value));
                 })
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleOutputFormatChanged)
                 [
@@ -632,7 +633,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             ]
             + SGridPanel::Slot(1, 1)
             [
-                SAssignNew(ImageFormatCombo, SComboBox<TSharedPtr<EOmniCaptureImageFormat>>)
+                SAssignNew(ImageFormatCombo, SComboBox<TEnumOptionPtr<EOmniCaptureImageFormat>>)
                 .OptionsSource(&ImageFormatOptions)
                 .OnGenerateWidget(this, &SOmniCaptureControlPanel::GenerateImageFormatOption)
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleImageFormatChanged)
@@ -656,11 +657,12 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             ]
             + SGridPanel::Slot(1, 2)
             [
-                SAssignNew(CodecCombo, SComboBox<TSharedPtr<EOmniCaptureCodec>>)
+                SAssignNew(CodecCombo, SComboBox<TEnumOptionPtr<EOmniCaptureCodec>>)
                 .OptionsSource(&CodecOptions)
-                .OnGenerateWidget_Lambda([](TSharedPtr<EOmniCaptureCodec> InItem)
+                .OnGenerateWidget_Lambda([](TEnumOptionPtr<EOmniCaptureCodec> InItem)
                 {
-                    return SNew(STextBlock).Text(CodecToText(InItem.IsValid() ? *InItem : EOmniCaptureCodec::H264));
+                    const EOmniCaptureCodec Value = InItem.IsValid() ? static_cast<EOmniCaptureCodec>(InItem->GetValue()) : EOmniCaptureCodec::H264;
+                    return SNew(STextBlock).Text(CodecToText(Value));
                 })
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleCodecChanged)
                 .IsEnabled_Lambda([this]()
@@ -683,11 +685,12 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             ]
             + SGridPanel::Slot(1, 3)
             [
-                SAssignNew(ColorFormatCombo, SComboBox<TSharedPtr<EOmniCaptureColorFormat>>)
+                SAssignNew(ColorFormatCombo, SComboBox<TEnumOptionPtr<EOmniCaptureColorFormat>>)
                 .OptionsSource(&ColorFormatOptions)
-                .OnGenerateWidget_Lambda([](TSharedPtr<EOmniCaptureColorFormat> InItem)
+                .OnGenerateWidget_Lambda([](TEnumOptionPtr<EOmniCaptureColorFormat> InItem)
                 {
-                    return SNew(STextBlock).Text(FormatToText(InItem.IsValid() ? *InItem : EOmniCaptureColorFormat::NV12));
+                    const EOmniCaptureColorFormat Value = InItem.IsValid() ? static_cast<EOmniCaptureColorFormat>(InItem->GetValue()) : EOmniCaptureColorFormat::NV12;
+                    return SNew(STextBlock).Text(FormatToText(Value));
                 })
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleColorFormatChanged)
                 .IsEnabled_Lambda([this]()
@@ -1654,34 +1657,38 @@ FText SOmniCaptureControlPanel::GetStereoLayoutDisplayText() const
     return LayoutToText(GetSettingsSnapshot());
 }
 
-void SOmniCaptureControlPanel::HandleStereoLayoutChanged(TSharedPtr<EOmniCaptureStereoLayout> NewValue, ESelectInfo::Type SelectInfo)
+void SOmniCaptureControlPanel::HandleStereoLayoutChanged(TEnumOptionPtr<EOmniCaptureStereoLayout> NewValue, ESelectInfo::Type SelectInfo)
 {
     if (NewValue.IsValid())
     {
-        ApplyStereoLayout(*NewValue);
+        ApplyStereoLayout(static_cast<EOmniCaptureStereoLayout>(NewValue->GetValue()));
     }
 }
 
-TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateStereoLayoutOption(TSharedPtr<EOmniCaptureStereoLayout> InValue) const
+TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateStereoLayoutOption(TEnumOptionPtr<EOmniCaptureStereoLayout> InValue) const
 {
-    const EOmniCaptureStereoLayout Layout = InValue.IsValid() ? *InValue : EOmniCaptureStereoLayout::SideBySide;
+    const EOmniCaptureStereoLayout Layout = InValue.IsValid()
+        ? static_cast<EOmniCaptureStereoLayout>(InValue->GetValue())
+        : EOmniCaptureStereoLayout::SideBySide;
     const FText Label = (Layout == EOmniCaptureStereoLayout::TopBottom)
         ? LOCTEXT("StereoLayoutTopBottom", "Top / Bottom")
         : LOCTEXT("StereoLayoutSideBySide", "Side-by-Side");
     return SNew(STextBlock).Text(Label);
 }
 
-void SOmniCaptureControlPanel::HandleProjectionChanged(TSharedPtr<EOmniCaptureProjection> NewProjection, ESelectInfo::Type SelectInfo)
+void SOmniCaptureControlPanel::HandleProjectionChanged(TEnumOptionPtr<EOmniCaptureProjection> NewProjection, ESelectInfo::Type SelectInfo)
 {
     if (NewProjection.IsValid())
     {
-        ApplyProjection(*NewProjection);
+        ApplyProjection(static_cast<EOmniCaptureProjection>(NewProjection->GetValue()));
     }
 }
 
-TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateProjectionOption(TSharedPtr<EOmniCaptureProjection> InValue) const
+TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateProjectionOption(TEnumOptionPtr<EOmniCaptureProjection> InValue) const
 {
-    const EOmniCaptureProjection Projection = InValue.IsValid() ? *InValue : EOmniCaptureProjection::Equirectangular;
+    const EOmniCaptureProjection Projection = InValue.IsValid()
+        ? static_cast<EOmniCaptureProjection>(InValue->GetValue())
+        : EOmniCaptureProjection::Equirectangular;
     return SNew(STextBlock).Text(ProjectionToText(Projection));
 }
 
@@ -1789,11 +1796,11 @@ void SOmniCaptureControlPanel::HandlePreviewViewChanged(ECheckBoxState NewState,
     }
 }
 
-TSharedPtr<EOmniCaptureStereoLayout> SOmniCaptureControlPanel::FindStereoLayoutOption(EOmniCaptureStereoLayout Layout) const
+TEnumOptionPtr<EOmniCaptureStereoLayout> SOmniCaptureControlPanel::FindStereoLayoutOption(EOmniCaptureStereoLayout Layout) const
 {
-    for (const TSharedPtr<EOmniCaptureStereoLayout>& Option : StereoLayoutOptions)
+    for (const TEnumOptionPtr<EOmniCaptureStereoLayout>& Option : StereoLayoutOptions)
     {
-        if (Option.IsValid() && *Option == Layout)
+        if (Option.IsValid() && static_cast<EOmniCaptureStereoLayout>(Option->GetValue()) == Layout)
         {
             return Option;
         }
@@ -1801,11 +1808,11 @@ TSharedPtr<EOmniCaptureStereoLayout> SOmniCaptureControlPanel::FindStereoLayoutO
     return StereoLayoutOptions.Num() > 0 ? StereoLayoutOptions[0] : nullptr;
 }
 
-TSharedPtr<EOmniOutputFormat> SOmniCaptureControlPanel::FindOutputFormatOption(EOmniOutputFormat Format) const
+TEnumOptionPtr<EOmniOutputFormat> SOmniCaptureControlPanel::FindOutputFormatOption(EOmniOutputFormat Format) const
 {
-    for (const TSharedPtr<EOmniOutputFormat>& Option : OutputFormatOptions)
+    for (const TEnumOptionPtr<EOmniOutputFormat>& Option : OutputFormatOptions)
     {
-        if (Option.IsValid() && *Option == Format)
+        if (Option.IsValid() && static_cast<EOmniOutputFormat>(Option->GetValue()) == Format)
         {
             return Option;
         }
@@ -1813,11 +1820,11 @@ TSharedPtr<EOmniOutputFormat> SOmniCaptureControlPanel::FindOutputFormatOption(E
     return OutputFormatOptions.Num() > 0 ? OutputFormatOptions[0] : nullptr;
 }
 
-TSharedPtr<EOmniCaptureCodec> SOmniCaptureControlPanel::FindCodecOption(EOmniCaptureCodec Codec) const
+TEnumOptionPtr<EOmniCaptureCodec> SOmniCaptureControlPanel::FindCodecOption(EOmniCaptureCodec Codec) const
 {
-    for (const TSharedPtr<EOmniCaptureCodec>& Option : CodecOptions)
+    for (const TEnumOptionPtr<EOmniCaptureCodec>& Option : CodecOptions)
     {
-        if (Option.IsValid() && *Option == Codec)
+        if (Option.IsValid() && static_cast<EOmniCaptureCodec>(Option->GetValue()) == Codec)
         {
             return Option;
         }
@@ -1825,11 +1832,11 @@ TSharedPtr<EOmniCaptureCodec> SOmniCaptureControlPanel::FindCodecOption(EOmniCap
     return CodecOptions.Num() > 0 ? CodecOptions[0] : nullptr;
 }
 
-TSharedPtr<EOmniCaptureColorFormat> SOmniCaptureControlPanel::FindColorFormatOption(EOmniCaptureColorFormat Format) const
+TEnumOptionPtr<EOmniCaptureColorFormat> SOmniCaptureControlPanel::FindColorFormatOption(EOmniCaptureColorFormat Format) const
 {
-    for (const TSharedPtr<EOmniCaptureColorFormat>& Option : ColorFormatOptions)
+    for (const TEnumOptionPtr<EOmniCaptureColorFormat>& Option : ColorFormatOptions)
     {
-        if (Option.IsValid() && *Option == Format)
+        if (Option.IsValid() && static_cast<EOmniCaptureColorFormat>(Option->GetValue()) == Format)
         {
             return Option;
         }
@@ -1837,11 +1844,11 @@ TSharedPtr<EOmniCaptureColorFormat> SOmniCaptureControlPanel::FindColorFormatOpt
     return ColorFormatOptions.Num() > 0 ? ColorFormatOptions[0] : nullptr;
 }
 
-TSharedPtr<EOmniCaptureProjection> SOmniCaptureControlPanel::FindProjectionOption(EOmniCaptureProjection Projection) const
+TEnumOptionPtr<EOmniCaptureProjection> SOmniCaptureControlPanel::FindProjectionOption(EOmniCaptureProjection Projection) const
 {
-    for (const TSharedPtr<EOmniCaptureProjection>& Option : ProjectionOptions)
+    for (const TEnumOptionPtr<EOmniCaptureProjection>& Option : ProjectionOptions)
     {
-        if (Option.IsValid() && *Option == Projection)
+        if (Option.IsValid() && static_cast<EOmniCaptureProjection>(Option->GetValue()) == Projection)
         {
             return Option;
         }
@@ -1849,11 +1856,11 @@ TSharedPtr<EOmniCaptureProjection> SOmniCaptureControlPanel::FindProjectionOptio
     return ProjectionOptions.Num() > 0 ? ProjectionOptions[0] : nullptr;
 }
 
-TSharedPtr<EOmniCaptureImageFormat> SOmniCaptureControlPanel::FindImageFormatOption(EOmniCaptureImageFormat Format) const
+TEnumOptionPtr<EOmniCaptureImageFormat> SOmniCaptureControlPanel::FindImageFormatOption(EOmniCaptureImageFormat Format) const
 {
-    for (const TSharedPtr<EOmniCaptureImageFormat>& Option : ImageFormatOptions)
+    for (const TEnumOptionPtr<EOmniCaptureImageFormat>& Option : ImageFormatOptions)
     {
-        if (Option.IsValid() && *Option == Format)
+        if (Option.IsValid() && static_cast<EOmniCaptureImageFormat>(Option->GetValue()) == Format)
         {
             return Option;
         }
@@ -1861,41 +1868,43 @@ TSharedPtr<EOmniCaptureImageFormat> SOmniCaptureControlPanel::FindImageFormatOpt
     return ImageFormatOptions.Num() > 0 ? ImageFormatOptions[0] : nullptr;
 }
 
-void SOmniCaptureControlPanel::HandleOutputFormatChanged(TSharedPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo)
+void SOmniCaptureControlPanel::HandleOutputFormatChanged(TEnumOptionPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo)
 {
     if (NewFormat.IsValid())
     {
-        ApplyOutputFormat(*NewFormat);
+        ApplyOutputFormat(static_cast<EOmniOutputFormat>(NewFormat->GetValue()));
     }
 }
 
-void SOmniCaptureControlPanel::HandleCodecChanged(TSharedPtr<EOmniCaptureCodec> NewCodec, ESelectInfo::Type SelectInfo)
+void SOmniCaptureControlPanel::HandleCodecChanged(TEnumOptionPtr<EOmniCaptureCodec> NewCodec, ESelectInfo::Type SelectInfo)
 {
     if (NewCodec.IsValid())
     {
-        ApplyCodec(*NewCodec);
+        ApplyCodec(static_cast<EOmniCaptureCodec>(NewCodec->GetValue()));
     }
 }
 
-void SOmniCaptureControlPanel::HandleColorFormatChanged(TSharedPtr<EOmniCaptureColorFormat> NewFormat, ESelectInfo::Type SelectInfo)
+void SOmniCaptureControlPanel::HandleColorFormatChanged(TEnumOptionPtr<EOmniCaptureColorFormat> NewFormat, ESelectInfo::Type SelectInfo)
 {
     if (NewFormat.IsValid())
     {
-        ApplyColorFormat(*NewFormat);
+        ApplyColorFormat(static_cast<EOmniCaptureColorFormat>(NewFormat->GetValue()));
     }
 }
 
-void SOmniCaptureControlPanel::HandleImageFormatChanged(TSharedPtr<EOmniCaptureImageFormat> NewFormat, ESelectInfo::Type SelectInfo)
+void SOmniCaptureControlPanel::HandleImageFormatChanged(TEnumOptionPtr<EOmniCaptureImageFormat> NewFormat, ESelectInfo::Type SelectInfo)
 {
     if (NewFormat.IsValid())
     {
-        ApplyImageFormat(*NewFormat);
+        ApplyImageFormat(static_cast<EOmniCaptureImageFormat>(NewFormat->GetValue()));
     }
 }
 
-TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateImageFormatOption(TSharedPtr<EOmniCaptureImageFormat> InValue) const
+TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateImageFormatOption(TEnumOptionPtr<EOmniCaptureImageFormat> InValue) const
 {
-    const EOmniCaptureImageFormat Format = InValue.IsValid() ? *InValue : EOmniCaptureImageFormat::PNG;
+    const EOmniCaptureImageFormat Format = InValue.IsValid()
+        ? static_cast<EOmniCaptureImageFormat>(InValue->GetValue())
+        : EOmniCaptureImageFormat::PNG;
     return SNew(STextBlock).Text(ImageFormatToText(Format));
 }
 
