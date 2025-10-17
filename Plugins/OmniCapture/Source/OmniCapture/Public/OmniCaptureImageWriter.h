@@ -2,25 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "OmniCaptureTypes.h"
-#include "Misc/EngineVersionComparison.h"
-
-namespace UE::ImageWriteQueue
-{
-#if UE_VERSION_NEWER_THAN(5, 5, 0)
-    class FImageWriteQueue;
-    class FImageWriteTask;
-#endif
-}
-
-#if UE_VERSION_NEWER_THAN(5, 5, 0)
-using FImageWriteQueueType = UE::ImageWriteQueue::FImageWriteQueue;
-using FImageWriteTaskType = UE::ImageWriteQueue::FImageWriteTask;
-#else
-class FImageWriteQueue;
-class FImageWriteTask;
-using FImageWriteQueueType = FImageWriteQueue;
-using FImageWriteTaskType = FImageWriteTask;
-#endif
+#include "Async/Future.h"
 
 class OMNICAPTURE_API FOmniCaptureImageWriter
 {
@@ -35,13 +17,26 @@ public:
     TArray<FOmniCaptureFrameMetadata> ConsumeCapturedFrames();
 
 private:
-    TUniquePtr<FImageWriteQueueType> OwnedQueue;
-    FImageWriteQueueType* ImageWriteQueue = nullptr;
+    bool WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear) const;
+    bool WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
+    bool WritePNGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
+    bool WriteJPEG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
+    bool WriteJPEGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
+    bool WriteEXR(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
+    bool WriteEXRFromColor(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
+    void TrackPendingTask(TFuture<bool>&& TaskFuture);
+    void PruneCompletedTasks();
+    void WaitForAllTasks();
+
+    bool bInitialized = false;
     FString OutputDirectory;
     FString SequenceBaseName;
     EOmniCaptureImageFormat TargetFormat = EOmniCaptureImageFormat::PNG;
 
     TArray<FOmniCaptureFrameMetadata> CapturedMetadata;
     FCriticalSection MetadataCS;
+
+    TArray<TFuture<bool>> PendingTasks;
+    FCriticalSection PendingTasksCS;
 };
 

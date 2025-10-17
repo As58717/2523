@@ -34,6 +34,7 @@ public class OmniCapture : ModuleRules
             "AudioExtensions",
             "DeveloperSettings",
             "ImageCore",
+            "ImageWrapper",
             "Renderer"
         });
 

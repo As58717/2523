@@ -907,15 +907,7 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
     }
 
     bool bSupportsCompute = GDynamicRHI != nullptr;
-#if UE_VERSION_NEWER_THAN(5, 5, 0)
-    if (bSupportsCompute)
-    {
-        const FRHICapabilities& RHICaps = GDynamicRHI->RHIGetCapabilities();
-        bSupportsCompute = RHICaps.SupportsComputeShaders();
-    }
-#else
     bSupportsCompute = bSupportsCompute && GRHISupportsComputeShaders;
-#endif
     if (!bSupportsCompute)
     {
         ConvertOnCPU(Settings, LeftEye, RightEye, Result);
