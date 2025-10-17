@@ -1,5 +1,6 @@
 #include "OmniCaptureMuxer.h"
 #include "OmniCaptureTypes.h"
+#include "Misc/EngineVersionComparison.h"
 
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -151,7 +152,16 @@ bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, cons
 
     Root->SetStringField(TEXT("fileBase"), BaseFileName);
     Root->SetStringField(TEXT("directory"), OutputDirectory);
-    Root->SetStringField(TEXT("outputFormat"), Settings.OutputFormat == EOmniOutputFormat::PNGSequence ? TEXT("PNGSequence") : TEXT("NVENC"));
+    const TCHAR* OutputFormatString = TEXT("NVENC");
+    if (Settings.OutputFormat == EOmniOutputFormat::ImageSequence)
+    {
+#if UE_VERSION_OLDER_THAN(5, 6, 0)
+        OutputFormatString = TEXT("PNGSequence");
+#else
+        OutputFormatString = TEXT("ImageSequence");
+#endif
+    }
+    Root->SetStringField(TEXT("outputFormat"), OutputFormatString);
     Root->SetStringField(TEXT("mode"), Settings.Mode == EOmniCaptureMode::Stereo ? TEXT("Stereo") : TEXT("Mono"));
     Root->SetStringField(TEXT("coverage"), ToCoverageString(Settings.Coverage));
     Root->SetStringField(TEXT("gamma"), Settings.Gamma == EOmniCaptureGamma::Linear ? TEXT("Linear") : TEXT("sRGB"));
@@ -407,7 +417,7 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
     FString OutputFile = OutputDirectory / (BaseFileName + TEXT(".mp4"));
     FString CommandLine;
 
-    if (Settings.OutputFormat == EOmniOutputFormat::PNGSequence)
+    if (Settings.OutputFormat == EOmniOutputFormat::ImageSequence)
     {
         FString Pattern = OutputDirectory / FString::Printf(TEXT("%s_%%06d.png"), *BaseFileName);
         CommandLine = FString::Printf(TEXT("-y -framerate %.3f -i \"%s\""), EffectiveFrameRate, *Pattern);
@@ -450,7 +460,7 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
     const int32 CroppedTop = 0;
     const TCHAR* ViewTag = bHalfSphere ? TEXT("VR180") : TEXT("VR360");
 
-    if (Settings.OutputFormat == EOmniOutputFormat::PNGSequence)
+    if (Settings.OutputFormat == EOmniOutputFormat::ImageSequence)
     {
         const TCHAR* CodecName = Settings.Codec == EOmniCaptureCodec::HEVC ? TEXT("libx265") : TEXT("libx264");
         CommandLine += FString::Printf(TEXT(" -c:v %s -pix_fmt %s"), CodecName, *PixelFormatArg);

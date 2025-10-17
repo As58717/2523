@@ -2,9 +2,20 @@
 
 #include "CoreMinimal.h"
 #include "OmniCaptureTypes.h"
+#include "Misc/EngineVersionComparison.h"
 
+#if UE_VERSION_NEWER_THAN(5, 5, 0)
+namespace UE::ImageWriteQueue
+{
+    class FImageWriteQueue;
+    class FImageWriteTask;
+}
+using FImageWriteQueue = UE::ImageWriteQueue::FImageWriteQueue;
+using FImageWriteTask = UE::ImageWriteQueue::FImageWriteTask;
+#else
 class FImageWriteQueue;
 class FImageWriteTask;
+#endif
 
 class OMNICAPTURE_API FOmniCaptureImageWriter
 {

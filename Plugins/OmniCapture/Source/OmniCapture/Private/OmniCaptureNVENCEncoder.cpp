@@ -9,7 +9,12 @@
 #include "Math/UnrealMathUtility.h"
 #include "PixelFormat.h"
 #include "RHI.h"
+#if __has_include("RHIAdapter.h")
 #include "RHIAdapter.h"
+#define OMNI_HAS_RHI_ADAPTER 1
+#else
+#define OMNI_HAS_RHI_ADAPTER 0
+#endif
 #include "GenericPlatform/GenericPlatformDriver.h"
 
 #if WITH_OMNI_NVENC && PLATFORM_WINDOWS
@@ -71,11 +76,20 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
     Caps.AdapterName = FPlatformMisc::GetPrimaryGPUBrand();
 #if PLATFORM_WINDOWS
     FString DeviceDescription;
+    FString PrimaryBrand = FPlatformMisc::GetPrimaryGPUBrand();
+#if OMNI_HAS_RHI_ADAPTER
     if (GDynamicRHI)
     {
         FRHIAdapterInfo AdapterInfo;
         GDynamicRHI->RHIGetAdapterInfo(AdapterInfo);
         DeviceDescription = AdapterInfo.Description;
+    }
+#else
+    DeviceDescription = PrimaryBrand;
+#endif
+    if (DeviceDescription.IsEmpty())
+    {
+        DeviceDescription = PrimaryBrand;
     }
     const FGPUDriverInfo DriverInfo = FPlatformMisc::GetGPUDriverInfo(DeviceDescription);
     Caps.DriverVersion = DriverInfo.DriverVersion;
@@ -83,6 +97,7 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
 
     return Caps;
 }
+#undef OMNI_HAS_RHI_ADAPTER
 
 bool FOmniCaptureNVENCEncoder::SupportsColorFormat(EOmniCaptureColorFormat Format)
 {

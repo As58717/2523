@@ -3,6 +3,7 @@
 #include "RHI.h"
 #include "RHIResources.h"
 #include "ImageWriteTypes.h"
+#include "Misc/EngineVersionComparison.h"
 #include "ImagePixelData.h"
 #include "OmniCaptureTypes.generated.h"
 
@@ -18,8 +19,23 @@ enum class EOmniCaptureCoverage : uint8 { FullSphere, HalfSphere };
 UENUM(BlueprintType)
 enum class EOmniCaptureStereoLayout : uint8 { TopBottom, SideBySide };
 
+#if UE_VERSION_OLDER_THAN(5, 6, 0)
 UENUM(BlueprintType)
-enum class EOmniOutputFormat : uint8 { ImageSequence, NVENCHardware };
+enum class EOmniOutputFormat : uint8
+{
+        PNGSequence UMETA(DisplayName = "Image Sequence"),
+        NVENCHardware UMETA(DisplayName = "NVENC Hardware"),
+        ImageSequence UMETA(Hidden) = PNGSequence
+};
+#else
+UENUM(BlueprintType)
+enum class EOmniOutputFormat : uint8
+{
+        ImageSequence UMETA(DisplayName = "Image Sequence"),
+        NVENCHardware UMETA(DisplayName = "NVENC Hardware"),
+        PNGSequence UMETA(Hidden) = ImageSequence
+};
+#endif
 
 UENUM(BlueprintType)
 enum class EOmniCaptureImageFormat : uint8 { PNG, JPG, EXR };
@@ -83,7 +99,12 @@ struct FOmniCaptureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, UIMin = 0.0)) float SegmentDurationSeconds = 0.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0)) int32 SegmentSizeLimitMB = 0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") bool bCreateSegmentSubfolders = true;
-        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniOutputFormat OutputFormat = EOmniOutputFormat::ImageSequence;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniOutputFormat OutputFormat =
+#if UE_VERSION_OLDER_THAN(5, 6, 0)
+            EOmniOutputFormat::PNGSequence;
+#else
+            EOmniOutputFormat::ImageSequence;
+#endif
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniCaptureImageFormat ImageFormat = EOmniCaptureImageFormat::PNG;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") FString OutputDirectory;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") FString OutputFileName = TEXT("OmniCapture");

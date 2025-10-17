@@ -141,18 +141,32 @@ FString FOmniCaptureSettings::GetStereoModeMetadataTag() const
         : TEXT("left-right");
 }
 
+namespace
+{
+    static int32 CalculateLcm(int32 A, int32 B)
+    {
+        if (A == 0 || B == 0)
+        {
+            return 0;
+        }
+
+        const int32 Gcd = FMath::GreatestCommonDivisor(FMath::Abs(A), FMath::Abs(B));
+        return (A / Gcd) * B;
+    }
+}
+
 int32 FOmniCaptureSettings::GetEncoderAlignmentRequirement() const
 {
     int32 Alignment = 2;
 
     if (OutputFormat == EOmniOutputFormat::NVENCHardware)
     {
-        Alignment = FMath::Lcm(Alignment, 64);
+        Alignment = CalculateLcm(Alignment, 64);
 
         switch (NVENCColorFormat)
         {
         case EOmniCaptureColorFormat::P010:
-            Alignment = FMath::Lcm(Alignment, 4);
+            Alignment = CalculateLcm(Alignment, 4);
             break;
         case EOmniCaptureColorFormat::BGRA:
             Alignment = FMath::Max(1, Alignment);

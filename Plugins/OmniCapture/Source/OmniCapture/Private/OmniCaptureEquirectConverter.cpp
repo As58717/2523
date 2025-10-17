@@ -12,6 +12,8 @@
 #include "RenderTargetPool.h"
 #if __has_include("RenderGraphUtils/Public/ComputeShaderUtils.h")
 #include "RenderGraphUtils/Public/ComputeShaderUtils.h"
+#elif __has_include("RenderGraphUtils/ComputeShaderUtils.h")
+#include "RenderGraphUtils/ComputeShaderUtils.h"
 #else
 #include "ComputeShaderUtils.h"
 #endif
