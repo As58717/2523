@@ -23,17 +23,17 @@ enum class EOmniCaptureStereoLayout : uint8 { TopBottom, SideBySide };
 UENUM(BlueprintType)
 enum class EOmniOutputFormat : uint8
 {
-        PNGSequence UMETA(DisplayName = "Image Sequence"),
-        NVENCHardware UMETA(DisplayName = "NVENC Hardware"),
-        ImageSequence UMETA(Hidden) = PNGSequence
+        PNGSequence UMETA(DisplayName = "Image Sequence") = 0,
+        NVENCHardware UMETA(DisplayName = "NVENC Hardware") = 1,
+        ImageSequence UMETA(Hidden) = 0,
 };
 #else
 UENUM(BlueprintType)
 enum class EOmniOutputFormat : uint8
 {
-        ImageSequence UMETA(DisplayName = "Image Sequence"),
-        NVENCHardware UMETA(DisplayName = "NVENC Hardware"),
-        PNGSequence UMETA(Hidden) = ImageSequence
+        ImageSequence UMETA(DisplayName = "Image Sequence") = 0,
+        NVENCHardware UMETA(DisplayName = "NVENC Hardware") = 1,
+        PNGSequence UMETA(Hidden) = 0,
 };
 #endif
 
