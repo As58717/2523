@@ -4,7 +4,7 @@
 #include "OmniCaptureDirectorActor.h"
 #include "OmniCaptureEquirectConverter.h"
 #include "OmniCaptureNVENCEncoder.h"
-#include "OmniCapturePNGWriter.h"
+#include "OmniCaptureImageWriter.h"
 #include "OmniCaptureRigActor.h"
 #include "OmniCaptureRingBuffer.h"
 #include "OmniCapturePreviewActor.h"
@@ -155,11 +155,11 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
 
         switch (ActiveSettings.OutputFormat)
         {
-        case EOmniOutputFormat::PNGSequence:
-            if (PNGWriter)
+        case EOmniOutputFormat::ImageSequence:
+            if (ImageWriter)
             {
-                const FString FileName = BuildFrameFileName(Frame->Metadata.FrameIndex, TEXT(".png"));
-                PNGWriter->EnqueueFrame(MoveTemp(Frame), FileName);
+                const FString FileName = BuildFrameFileName(Frame->Metadata.FrameIndex, ActiveSettings.GetImageFileExtension());
+                ImageWriter->EnqueueFrame(MoveTemp(Frame), FileName);
             }
             break;
         case EOmniOutputFormat::NVENCHardware:
@@ -197,20 +197,24 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     LastPreviewUpdateTime = CaptureStartTime;
     State = EOmniCaptureState::Recording;
 
-    const FIntPoint OutputDimensions = ActiveSettings.GetEquirectResolution();
-    const TCHAR* CoverageLabel = ActiveSettings.Coverage == EOmniCaptureCoverage::HalfSphere ? TEXT("180") : TEXT("360");
+    const FIntPoint OutputDimensions = ActiveSettings.GetOutputResolution();
+    const TCHAR* CoverageLabel = ActiveSettings.IsPlanar()
+        ? TEXT("Planar2D")
+        : (ActiveSettings.Coverage == EOmniCaptureCoverage::HalfSphere ? TEXT("180") : TEXT("360"));
     const TCHAR* LayoutLabel = ActiveSettings.Mode == EOmniCaptureMode::Stereo
         ? (ActiveSettings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? TEXT("Top-Bottom") : TEXT("Side-by-Side"))
         : TEXT("Mono");
-    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Begin capture %s %s (%dx%d -> %dx%d, %s) (%s, %s, %s) -> %s"),
+    const TCHAR* ProjectionLabel = ActiveSettings.IsPlanar() ? TEXT("Planar") : TEXT("Equirect");
+    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Begin capture %s %s (%dx%d -> %dx%d, %s %s) (%s, %s, %s) -> %s"),
         ActiveSettings.Mode == EOmniCaptureMode::Stereo ? TEXT("Stereo") : TEXT("Mono"),
         CoverageLabel,
-        ActiveSettings.Resolution,
-        ActiveSettings.Resolution,
+        ActiveSettings.IsPlanar() ? ActiveSettings.PlanarResolution.X : ActiveSettings.Resolution,
+        ActiveSettings.IsPlanar() ? ActiveSettings.PlanarResolution.Y : ActiveSettings.Resolution,
         OutputDimensions.X,
         OutputDimensions.Y,
+        ProjectionLabel,
         LayoutLabel,
-        ActiveSettings.OutputFormat == EOmniOutputFormat::PNGSequence ? TEXT("PNG") : TEXT("NVENC"),
+        ActiveSettings.OutputFormat == EOmniOutputFormat::ImageSequence ? TEXT("Image") : TEXT("NVENC"),
         ActiveSettings.Gamma == EOmniCaptureGamma::Linear ? TEXT("Linear") : TEXT("sRGB"),
         ActiveSettings.Codec == EOmniCaptureCodec::HEVC ? TEXT("HEVC") : TEXT("H.264"),
         *ActiveSettings.OutputDirectory);
@@ -328,7 +332,7 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
     LastStillImagePath.Empty();
 
     FOmniCaptureSettings StillSettings = InSettings;
-    StillSettings.OutputFormat = EOmniOutputFormat::PNGSequence;
+    StillSettings.OutputFormat = EOmniOutputFormat::ImageSequence;
 
     FActorSpawnParameters SpawnParams;
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -349,7 +353,9 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
 
     FlushRenderingCommands();
 
-    FOmniCaptureEquirectResult Result = FOmniCaptureEquirectConverter::ConvertToEquirectangular(StillSettings, LeftEye, RightEye);
+    FOmniCaptureEquirectResult Result = StillSettings.IsPlanar()
+        ? FOmniCaptureEquirectConverter::ConvertToPlanar(StillSettings, LeftEye)
+        : FOmniCaptureEquirectConverter::ConvertToEquirectangular(StillSettings, LeftEye, RightEye);
 
     World->DestroyActor(TempRig);
 
@@ -369,10 +375,11 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
 
     const FString BaseName = StillSettings.OutputFileName.IsEmpty() ? TEXT("OmniCaptureStill") : StillSettings.OutputFileName;
     const FString Timestamp = FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S"));
-    const FString FileName = FString::Printf(TEXT("%s_%s.png"), *BaseName, *Timestamp);
+    const FString Extension = StillSettings.GetImageFileExtension();
+    const FString FileName = FString::Printf(TEXT("%s_%s%s"), *BaseName, *Timestamp, *Extension);
     OutFilePath = OutputDirectory / FileName;
 
-    FOmniCapturePNGWriter Writer;
+    FOmniCaptureImageWriter Writer;
     FOmniCaptureSettings WriterSettings = StillSettings;
     WriterSettings.OutputDirectory = OutputDirectory;
     WriterSettings.OutputFileName = BaseName;
@@ -576,7 +583,7 @@ void UOmniCaptureSubsystem::SpawnPreviewActor()
 
     if (AOmniCapturePreviewActor* Preview = World->SpawnActor<AOmniCapturePreviewActor>(SpawnParameters))
     {
-        const FIntPoint OutputSize = ActiveSettings.GetEquirectResolution();
+        const FIntPoint OutputSize = ActiveSettings.GetOutputResolution();
         Preview->Initialize(ActiveSettings.PreviewScreenScale, OutputSize);
         Preview->SetPreviewEnabled(true);
         Preview->SetPreviewView(ActiveSettings.PreviewVisualization);
@@ -606,9 +613,9 @@ void UOmniCaptureSubsystem::InitializeOutputWriters()
 
     switch (ActiveSettings.OutputFormat)
     {
-    case EOmniOutputFormat::PNGSequence:
-        PNGWriter = MakeUnique<FOmniCapturePNGWriter>();
-        PNGWriter->Initialize(ActiveSettings, ActiveSettings.OutputDirectory);
+    case EOmniOutputFormat::ImageSequence:
+        ImageWriter = MakeUnique<FOmniCaptureImageWriter>();
+        ImageWriter->Initialize(ActiveSettings, ActiveSettings.OutputDirectory);
         break;
     case EOmniOutputFormat::NVENCHardware:
         NVENCEncoder = MakeUnique<FOmniCaptureNVENCEncoder>();
@@ -625,10 +632,10 @@ void UOmniCaptureSubsystem::InitializeOutputWriters()
 
 void UOmniCaptureSubsystem::ShutdownOutputWriters(bool bFinalizeOutputs)
 {
-    if (PNGWriter)
+    if (ImageWriter)
     {
-        PNGWriter->Flush();
-        PNGWriter.Reset();
+        ImageWriter->Flush();
+        ImageWriter.Reset();
     }
 
     if (NVENCEncoder)
@@ -842,7 +849,7 @@ bool UOmniCaptureSubsystem::ApplyFallbacks()
         if (ActiveSettings.bAllowNVENCFallback)
         {
             ActiveWarnings.Add(TEXT("Falling back to PNG sequence because NVENC is unavailable"));
-            ActiveSettings.OutputFormat = EOmniOutputFormat::PNGSequence;
+            ActiveSettings.OutputFormat = EOmniOutputFormat::ImageSequence;
             return true;
         }
 
@@ -854,7 +861,7 @@ bool UOmniCaptureSubsystem::ApplyFallbacks()
     {
 #if !PLATFORM_WINDOWS
         ActiveWarnings.Add(TEXT("NVENC output is not supported on this platform; switching to PNG sequence."));
-        ActiveSettings.OutputFormat = EOmniOutputFormat::PNGSequence;
+        ActiveSettings.OutputFormat = EOmniOutputFormat::ImageSequence;
         return true;
 #endif
 
@@ -972,7 +979,9 @@ void UOmniCaptureSubsystem::CaptureFrame()
 
     FlushRenderingCommands();
 
-    FOmniCaptureEquirectResult ConversionResult = FOmniCaptureEquirectConverter::ConvertToEquirectangular(ActiveSettings, LeftEye, RightEye);
+    FOmniCaptureEquirectResult ConversionResult = ActiveSettings.IsPlanar()
+        ? FOmniCaptureEquirectConverter::ConvertToPlanar(ActiveSettings, LeftEye)
+        : FOmniCaptureEquirectConverter::ConvertToEquirectangular(ActiveSettings, LeftEye, RightEye);
     const bool bRequiresGPU = ActiveSettings.OutputFormat == EOmniOutputFormat::NVENCHardware;
     if (!ConversionResult.PixelData.IsValid())
     {

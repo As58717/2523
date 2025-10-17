@@ -8,7 +8,7 @@
 
 namespace
 {
-    constexpr int32 FaceCount = 6;
+    constexpr int32 CubemapFaceCount = 6;
 }
 
 AOmniCaptureRigActor::AOmniCaptureRigActor()
@@ -63,11 +63,14 @@ void AOmniCaptureRigActor::Configure(const FOmniCaptureSettings& InSettings)
     RightEyeCaptures.Empty();
     RenderTargets.Empty();
 
-    BuildEyeRig(EOmniCaptureEye::Left, -IPDHalf);
+    const bool bPlanar = CachedSettings.IsPlanar();
+    const int32 FaceCount = bPlanar ? 1 : CubemapFaceCount;
+
+    BuildEyeRig(EOmniCaptureEye::Left, -IPDHalf, FaceCount);
 
     if (CachedSettings.Mode == EOmniCaptureMode::Stereo)
     {
-        BuildEyeRig(EOmniCaptureEye::Right, IPDHalf);
+        BuildEyeRig(EOmniCaptureEye::Right, IPDHalf, FaceCount);
     }
 }
 
@@ -85,7 +88,7 @@ void AOmniCaptureRigActor::Capture(FOmniEyeCapture& OutLeftEye, FOmniEyeCapture&
     }
 }
 
-void AOmniCaptureRigActor::BuildEyeRig(EOmniCaptureEye Eye, float IPDHalfCm)
+void AOmniCaptureRigActor::BuildEyeRig(EOmniCaptureEye Eye, float IPDHalfCm, int32 FaceCount)
 {
     USceneComponent* EyeRoot = Eye == EOmniCaptureEye::Left ? LeftEyeRoot : RightEyeRoot;
 
@@ -98,23 +101,30 @@ void AOmniCaptureRigActor::BuildEyeRig(EOmniCaptureEye Eye, float IPDHalfCm)
 
     TArray<USceneCaptureComponent2D*>& TargetArray = Eye == EOmniCaptureEye::Left ? LeftEyeCaptures : RightEyeCaptures;
 
+    const FIntPoint TargetSize = CachedSettings.IsPlanar()
+        ? CachedSettings.GetPlanarResolution()
+        : FIntPoint(CachedSettings.Resolution, CachedSettings.Resolution);
+
     for (int32 FaceIndex = 0; FaceIndex < FaceCount; ++FaceIndex)
     {
         FString ComponentName = FString::Printf(TEXT("%s_CaptureFace_%d"), Eye == EOmniCaptureEye::Left ? TEXT("Left") : TEXT("Right"), FaceIndex);
         USceneCaptureComponent2D* CaptureComponent = NewObject<USceneCaptureComponent2D>(this, *ComponentName);
         CaptureComponent->SetupAttachment(EyeRoot);
         CaptureComponent->RegisterComponent();
-        ConfigureCaptureComponent(CaptureComponent);
+        ConfigureCaptureComponent(CaptureComponent, TargetSize);
 
-        FRotator FaceRotation;
-        GetOrientationForFace(FaceIndex, FaceRotation);
-        CaptureComponent->SetRelativeRotation(FaceRotation);
+        if (!CachedSettings.IsPlanar())
+        {
+            FRotator FaceRotation;
+            GetOrientationForFace(FaceIndex, FaceRotation);
+            CaptureComponent->SetRelativeRotation(FaceRotation);
+        }
 
         TargetArray.Add(CaptureComponent);
     }
 }
 
-void AOmniCaptureRigActor::ConfigureCaptureComponent(USceneCaptureComponent2D* CaptureComponent) const
+void AOmniCaptureRigActor::ConfigureCaptureComponent(USceneCaptureComponent2D* CaptureComponent, const FIntPoint& TargetSize) const
 {
     if (!CaptureComponent)
     {
@@ -133,7 +143,9 @@ void AOmniCaptureRigActor::ConfigureCaptureComponent(USceneCaptureComponent2D* C
 
     // 设置渲染目标
     const EPixelFormat PixelFormat = PF_FloatRGBA;
-    RenderTarget->InitCustomFormat(CachedSettings.Resolution, CachedSettings.Resolution, PixelFormat, false);
+    const int32 SizeX = FMath::Max(2, TargetSize.X);
+    const int32 SizeY = FMath::Max(2, TargetSize.Y);
+    RenderTarget->InitCustomFormat(SizeX, SizeY, PixelFormat, false);
     RenderTarget->TargetGamma = CachedSettings.Gamma == EOmniCaptureGamma::Linear ? 1.0f : 2.2f;
     RenderTarget->bAutoGenerateMips = false;
     RenderTarget->ClearColor = FLinearColor::Black;
@@ -149,7 +161,9 @@ void AOmniCaptureRigActor::CaptureEye(EOmniCaptureEye Eye, FOmniEyeCapture& OutC
 {
     const TArray<USceneCaptureComponent2D*>& CaptureComponents = Eye == EOmniCaptureEye::Left ? LeftEyeCaptures : RightEyeCaptures;
 
-    for (int32 FaceIndex = 0; FaceIndex < 6; ++FaceIndex)
+    OutCapture.ActiveFaceCount = CaptureComponents.Num();
+
+    for (int32 FaceIndex = 0; FaceIndex < UE_ARRAY_COUNT(OutCapture.Faces); ++FaceIndex)
     {
         OutCapture.Faces[FaceIndex].RenderTarget = nullptr;
     }

@@ -3,7 +3,7 @@
 #include "OmniCaptureTypes.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "OmniCaptureRingBuffer.h"
-#include "OmniCapturePNGWriter.h"
+#include "OmniCaptureImageWriter.h"
 #include "OmniCaptureAudioRecorder.h"
 #include "OmniCaptureNVENCEncoder.h"
 #include "OmniCaptureMuxer.h"
@@ -155,7 +155,7 @@ private:
     TWeakObjectPtr<AOmniCapturePreviewActor> PreviewActor;
 
     TUniquePtr<FOmniCaptureRingBuffer> RingBuffer;
-    TUniquePtr<FOmniCapturePNGWriter> PNGWriter;
+    TUniquePtr<FOmniCaptureImageWriter> ImageWriter;
     TUniquePtr<FOmniCaptureAudioRecorder> AudioRecorder;
     TUniquePtr<FOmniCaptureNVENCEncoder> NVENCEncoder;
     TUniquePtr<FOmniCaptureMuxer> OutputMuxer;

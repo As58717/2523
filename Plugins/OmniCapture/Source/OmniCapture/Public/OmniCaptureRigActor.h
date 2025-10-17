@@ -24,6 +24,12 @@ struct FOmniCaptureFaceResources
 struct FOmniEyeCapture
 {
     FOmniCaptureFaceResources Faces[6];
+    int32 ActiveFaceCount = 0;
+
+    UTextureRenderTarget2D* GetPrimaryRenderTarget() const
+    {
+        return ActiveFaceCount > 0 ? Faces[0].RenderTarget : nullptr;
+    }
 };
 
 UCLASS(NotBlueprintable)
@@ -40,8 +46,8 @@ public:
     FORCEINLINE const FTransform& GetRigTransform() const { return RigRoot->GetComponentTransform(); }
 
 private:
-    void BuildEyeRig(EOmniCaptureEye Eye, float IPDHalfCm);
-    void ConfigureCaptureComponent(USceneCaptureComponent2D* CaptureComponent) const;
+    void BuildEyeRig(EOmniCaptureEye Eye, float IPDHalfCm, int32 FaceCount);
+    void ConfigureCaptureComponent(USceneCaptureComponent2D* CaptureComponent, const FIntPoint& TargetSize) const;
     void CaptureEye(EOmniCaptureEye Eye, FOmniEyeCapture& OutCapture) const;
 
     static void GetOrientationForFace(int32 FaceIndex, FRotator& OutRotation);

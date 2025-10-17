@@ -126,7 +126,7 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     bZeroCopyRequested = Settings.bZeroCopy;
 
 #if WITH_OMNI_NVENC && PLATFORM_WINDOWS
-    const FIntPoint OutputSize = Settings.GetEquirectResolution();
+    const FIntPoint OutputSize = Settings.GetOutputResolution();
     const int32 OutputWidth = OutputSize.X;
     const int32 OutputHeight = OutputSize.Y;
 

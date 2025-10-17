@@ -59,9 +59,35 @@ namespace
         {
         case EOmniOutputFormat::NVENCHardware:
             return LOCTEXT("OutputFormatNVENC", "NVENC (MP4)");
-        case EOmniOutputFormat::PNGSequence:
+        case EOmniOutputFormat::ImageSequence:
         default:
-            return LOCTEXT("OutputFormatPNG", "PNG Sequence");
+            return LOCTEXT("OutputFormatImageSequence", "Image Sequence");
+        }
+    }
+
+    FText ProjectionToText(EOmniCaptureProjection Projection)
+    {
+        switch (Projection)
+        {
+        case EOmniCaptureProjection::Planar2D:
+            return LOCTEXT("ProjectionPlanar", "Planar 2D");
+        case EOmniCaptureProjection::Equirectangular:
+        default:
+            return LOCTEXT("ProjectionEquirect", "Equirectangular");
+        }
+    }
+
+    FText ImageFormatToText(EOmniCaptureImageFormat Format)
+    {
+        switch (Format)
+        {
+        case EOmniCaptureImageFormat::JPG:
+            return LOCTEXT("ImageFormatJPG", "JPEG Sequence");
+        case EOmniCaptureImageFormat::EXR:
+            return LOCTEXT("ImageFormatEXR", "EXR Sequence");
+        case EOmniCaptureImageFormat::PNG:
+        default:
+            return LOCTEXT("ImageFormatPNG", "PNG Sequence");
         }
     }
 
@@ -128,7 +154,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
 
     OutputFormatOptions.Reset();
     OutputFormatOptions.Add(MakeShared<EOmniOutputFormat>(EOmniOutputFormat::NVENCHardware));
-    OutputFormatOptions.Add(MakeShared<EOmniOutputFormat>(EOmniOutputFormat::PNGSequence));
+    OutputFormatOptions.Add(MakeShared<EOmniOutputFormat>(EOmniOutputFormat::ImageSequence));
 
     CodecOptions.Reset();
     CodecOptions.Add(MakeShared<EOmniCaptureCodec>(EOmniCaptureCodec::HEVC));
@@ -138,6 +164,15 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
     ColorFormatOptions.Add(MakeShared<EOmniCaptureColorFormat>(EOmniCaptureColorFormat::NV12));
     ColorFormatOptions.Add(MakeShared<EOmniCaptureColorFormat>(EOmniCaptureColorFormat::P010));
     ColorFormatOptions.Add(MakeShared<EOmniCaptureColorFormat>(EOmniCaptureColorFormat::BGRA));
+
+    ProjectionOptions.Reset();
+    ProjectionOptions.Add(MakeShared<EOmniCaptureProjection>(EOmniCaptureProjection::Equirectangular));
+    ProjectionOptions.Add(MakeShared<EOmniCaptureProjection>(EOmniCaptureProjection::Planar2D));
+
+    ImageFormatOptions.Reset();
+    ImageFormatOptions.Add(MakeShared<EOmniCaptureImageFormat>(EOmniCaptureImageFormat::PNG));
+    ImageFormatOptions.Add(MakeShared<EOmniCaptureImageFormat>(EOmniCaptureImageFormat::JPG));
+    ImageFormatOptions.Add(MakeShared<EOmniCaptureImageFormat>(EOmniCaptureImageFormat::EXR));
 
     auto BuildSection = [](const FText& Title, const FText& Description, const TSharedRef<SWidget>& Content) -> TSharedRef<SWidget>
     {
@@ -173,6 +208,34 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
         LOCTEXT("OutputModeSectionTitle", "Output Modes"),
         LOCTEXT("OutputModeSectionDesc", "Switch between 360° and VR180 capture, choose mono or stereo output, and manage layout safety constraints."),
         SNew(SVerticalBox)
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("ProjectionLabel", "Projection"))
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(8.f, 0.f, 0.f, 0.f)
+            [
+                SAssignNew(ProjectionCombo, SComboBox<TSharedPtr<EOmniCaptureProjection>>)
+                .OptionsSource(&ProjectionOptions)
+                .OnGenerateWidget(this, &SOmniCaptureControlPanel::GenerateProjectionOption)
+                .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleProjectionChanged)
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([this]()
+                    {
+                        return ProjectionToText(GetSettingsSnapshot().Projection);
+                    })
+                ]
+            ]
+        ]
         + SVerticalBox::Slot()
         .AutoHeight()
         [
@@ -267,43 +330,112 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
     );
 
     TSharedRef<SWidget> ResolutionSection = BuildSection(
-        LOCTEXT("ResolutionSectionTitle", "Per-Eye Resolution"),
-        LOCTEXT("ResolutionSectionDesc", "Enter the desired per-eye resolution. OmniCapture aligns values for the active encoder and reports the resulting stereo layout size."),
+        LOCTEXT("ResolutionSectionTitle", "Output Resolution"),
+        LOCTEXT("ResolutionSectionDesc", "Configure either per-eye cube face resolution or planar output dimensions with integer scaling."),
         SNew(SVerticalBox)
         + SVerticalBox::Slot()
         .AutoHeight()
         [
-            SNew(SGridPanel)
-            .FillColumn(1, 1.f)
-            + SGridPanel::Slot(0, 0)
-            .VAlign(VAlign_Center)
+            SNew(SVerticalBox)
+            .Visibility_Lambda([this]()
+            {
+                return GetSettingsSnapshot().Projection == EOmniCaptureProjection::Equirectangular ? EVisibility::Visible : EVisibility::Collapsed;
+            })
+            + SVerticalBox::Slot()
+            .AutoHeight()
             [
-                SNew(STextBlock)
-                .Text(LOCTEXT("PerEyeWidthLabel", "Per-eye Width"))
+                SNew(SGridPanel)
+                .FillColumn(1, 1.f)
+                + SGridPanel::Slot(0, 0)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("PerEyeWidthLabel", "Per-eye Width"))
+                ]
+                + SGridPanel::Slot(1, 0)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(512)
+                    .MaxValue(16384)
+                    .Delta(64)
+                    .Value(this, &SOmniCaptureControlPanel::GetPerEyeWidthValue)
+                    .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePerEyeWidthCommitted)
+                ]
+                + SGridPanel::Slot(0, 7)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("PerEyeHeightLabel", "Per-eye Height"))
+                ]
+                + SGridPanel::Slot(1, 7)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(512)
+                    .MaxValue(16384)
+                    .Delta(64)
+                    .Value(this, &SOmniCaptureControlPanel::GetPerEyeHeightValue)
+                    .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePerEyeHeightCommitted)
+                ]
             ]
-            + SGridPanel::Slot(1, 0)
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            SNew(SVerticalBox)
+            .Visibility_Lambda([this]()
+            {
+                return GetSettingsSnapshot().Projection == EOmniCaptureProjection::Planar2D ? EVisibility::Visible : EVisibility::Collapsed;
+            })
+            + SVerticalBox::Slot()
+            .AutoHeight()
             [
-                SNew(SSpinBox<int32>)
-                .MinValue(512)
-                .MaxValue(16384)
-                .Delta(64)
-                .Value(this, &SOmniCaptureControlPanel::GetPerEyeWidthValue)
-                .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePerEyeWidthCommitted)
-            ]
-            + SGridPanel::Slot(0, 1)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                .Text(LOCTEXT("PerEyeHeightLabel", "Per-eye Height"))
-            ]
-            + SGridPanel::Slot(1, 1)
-            [
-                SNew(SSpinBox<int32>)
-                .MinValue(512)
-                .MaxValue(16384)
-                .Delta(64)
-                .Value(this, &SOmniCaptureControlPanel::GetPerEyeHeightValue)
-                .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePerEyeHeightCommitted)
+                SNew(SGridPanel)
+                .FillColumn(1, 1.f)
+                + SGridPanel::Slot(0, 0)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("PlanarWidthLabel", "Output Width"))
+                ]
+                + SGridPanel::Slot(1, 0)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(320)
+                    .MaxValue(16384)
+                    .Delta(64)
+                    .Value(this, &SOmniCaptureControlPanel::GetPlanarWidthValue)
+                    .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePlanarWidthCommitted)
+                ]
+                + SGridPanel::Slot(0, 1)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("PlanarHeightLabel", "Output Height"))
+                ]
+                + SGridPanel::Slot(1, 1)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(240)
+                    .MaxValue(16384)
+                    .Delta(64)
+                    .Value(this, &SOmniCaptureControlPanel::GetPlanarHeightValue)
+                    .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePlanarHeightCommitted)
+                ]
+                + SGridPanel::Slot(0, 2)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("PlanarScaleLabel", "Integer Scale"))
+                ]
+                + SGridPanel::Slot(1, 2)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(1)
+                    .MaxValue(16)
+                    .Delta(1)
+                    .Value(this, &SOmniCaptureControlPanel::GetPlanarScaleValue)
+                    .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePlanarScaleCommitted)
+                ]
             ]
         ]
         + SVerticalBox::Slot()
@@ -477,7 +609,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 .OptionsSource(&OutputFormatOptions)
                 .OnGenerateWidget_Lambda([](TSharedPtr<EOmniOutputFormat> InItem)
                 {
-                    return SNew(STextBlock).Text(OutputFormatToText(InItem.IsValid() ? *InItem : EOmniOutputFormat::PNGSequence));
+                    return SNew(STextBlock).Text(OutputFormatToText(InItem.IsValid() ? *InItem : EOmniOutputFormat::ImageSequence));
                 })
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleOutputFormatChanged)
                 [
@@ -492,9 +624,37 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                .Text(LOCTEXT("CodecLabel", "Codec"))
+                .Text(LOCTEXT("ImageFormatLabel", "Image Format"))
+                .Visibility_Lambda([this]()
+                {
+                    return GetSettingsSnapshot().OutputFormat == EOmniOutputFormat::ImageSequence ? EVisibility::Visible : EVisibility::Collapsed;
+                })
             ]
             + SGridPanel::Slot(1, 1)
+            [
+                SAssignNew(ImageFormatCombo, SComboBox<TSharedPtr<EOmniCaptureImageFormat>>)
+                .OptionsSource(&ImageFormatOptions)
+                .OnGenerateWidget(this, &SOmniCaptureControlPanel::GenerateImageFormatOption)
+                .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleImageFormatChanged)
+                .Visibility_Lambda([this]()
+                {
+                    return GetSettingsSnapshot().OutputFormat == EOmniOutputFormat::ImageSequence ? EVisibility::Visible : EVisibility::Collapsed;
+                })
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([this]()
+                    {
+                        return ImageFormatToText(GetSettingsSnapshot().ImageFormat);
+                    })
+                ]
+            ]
+            + SGridPanel::Slot(0, 2)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("CodecLabel", "Codec"))
+            ]
+            + SGridPanel::Slot(1, 2)
             [
                 SAssignNew(CodecCombo, SComboBox<TSharedPtr<EOmniCaptureCodec>>)
                 .OptionsSource(&CodecOptions)
@@ -515,13 +675,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                     })
                 ]
             ]
-            + SGridPanel::Slot(0, 2)
+            + SGridPanel::Slot(0, 3)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("ColorFormatLabel", "Color Format"))
             ]
-            + SGridPanel::Slot(1, 2)
+            + SGridPanel::Slot(1, 3)
             [
                 SAssignNew(ColorFormatCombo, SComboBox<TSharedPtr<EOmniCaptureColorFormat>>)
                 .OptionsSource(&ColorFormatOptions)
@@ -542,13 +702,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                     })
                 ]
             ]
-            + SGridPanel::Slot(0, 3)
+            + SGridPanel::Slot(0, 4)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("TargetBitrateLabel", "Target Bitrate (kbps)"))
             ]
-            + SGridPanel::Slot(1, 3)
+            + SGridPanel::Slot(1, 4)
             [
                 SNew(SSpinBox<int32>)
                 .MinValue(1000)
@@ -557,13 +717,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 .Value(this, &SOmniCaptureControlPanel::GetTargetBitrate)
                 .OnValueCommitted(this, &SOmniCaptureControlPanel::HandleTargetBitrateCommitted)
             ]
-            + SGridPanel::Slot(0, 4)
+            + SGridPanel::Slot(0, 5)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("MaxBitrateLabel", "Max Bitrate (kbps)"))
             ]
-            + SGridPanel::Slot(1, 4)
+            + SGridPanel::Slot(1, 5)
             [
                 SNew(SSpinBox<int32>)
                 .MinValue(1000)
@@ -572,13 +732,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 .Value(this, &SOmniCaptureControlPanel::GetMaxBitrate)
                 .OnValueCommitted(this, &SOmniCaptureControlPanel::HandleMaxBitrateCommitted)
             ]
-            + SGridPanel::Slot(0, 5)
+            + SGridPanel::Slot(0, 6)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("GOPLengthLabel", "GOP Length"))
             ]
-            + SGridPanel::Slot(1, 5)
+            + SGridPanel::Slot(1, 6)
             [
                 SNew(SSpinBox<int32>)
                 .MinValue(1)
@@ -587,13 +747,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 .Value(this, &SOmniCaptureControlPanel::GetGOPLength)
                 .OnValueCommitted(this, &SOmniCaptureControlPanel::HandleGOPCommitted)
             ]
-            + SGridPanel::Slot(0, 6)
+            + SGridPanel::Slot(0, 7)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("BFramesLabel", "B-Frames"))
             ]
-            + SGridPanel::Slot(1, 6)
+            + SGridPanel::Slot(1, 7)
             [
                 SNew(SSpinBox<int32>)
                 .MinValue(0)
@@ -1084,15 +1244,29 @@ void SOmniCaptureControlPanel::RefreshStatus()
     const bool bCapturing = Subsystem->IsCapturing();
     const FOmniCaptureSettings& Settings = bCapturing ? Subsystem->GetActiveSettings() : (SettingsObject.IsValid() ? SettingsObject->CaptureSettings : FOmniCaptureSettings());
 
-    const FIntPoint OutputSize = Settings.GetEquirectResolution();
-    const FText ConfigText = FText::Format(LOCTEXT("ConfigFormat", "Codec: {0} | Format: {1} | Zero Copy: {2} | Coverage: {3} | Layout: {4} | Output: {5}×{6}"),
-        CodecToText(Settings.Codec),
-        FormatToText(Settings.NVENCColorFormat),
-        Settings.bZeroCopy ? LOCTEXT("ZeroCopyYes", "Yes") : LOCTEXT("ZeroCopyNo", "No"),
-        CoverageToText(Settings.Coverage),
-        LayoutToText(Settings),
+    const FIntPoint OutputSize = Settings.GetOutputResolution();
+    const FText ProjectionText = ProjectionToText(Settings.Projection);
+    const FText CoverageText = Settings.IsPlanar() ? LOCTEXT("CoverageNA", "N/A") : CoverageToText(Settings.Coverage);
+    const FText LayoutText = LayoutToText(Settings);
+    const FText OutputFormatText = OutputFormatToText(Settings.OutputFormat);
+    const FText CodecText = Settings.OutputFormat == EOmniOutputFormat::NVENCHardware ? CodecToText(Settings.Codec) : LOCTEXT("CodecNotApplicable", "N/A");
+    const FText ColorFormatText = Settings.OutputFormat == EOmniOutputFormat::NVENCHardware ? FormatToText(Settings.NVENCColorFormat) : LOCTEXT("ColorFormatNotApplicable", "N/A");
+    const FText ZeroCopyText = Settings.OutputFormat == EOmniOutputFormat::NVENCHardware
+        ? (Settings.bZeroCopy ? LOCTEXT("ZeroCopyYes", "Yes") : LOCTEXT("ZeroCopyNo", "No"))
+        : LOCTEXT("ZeroCopyNotApplicable", "N/A");
+    const FText ImageFormatText = Settings.OutputFormat == EOmniOutputFormat::ImageSequence ? ImageFormatToText(Settings.ImageFormat) : LOCTEXT("ImageFormatNotApplicable", "N/A");
+
+    const FText ConfigText = FText::Format(LOCTEXT("ConfigFormat", "Output: {0} | Projection: {1} | Coverage: {2} | Layout: {3} | Resolution: {4}×{5} | Codec: {6} | Color: {7} | Zero Copy: {8} | Images: {9}"),
+        OutputFormatText,
+        ProjectionText,
+        CoverageText,
+        LayoutText,
         FText::AsNumber(OutputSize.X),
-        FText::AsNumber(OutputSize.Y));
+        FText::AsNumber(OutputSize.Y),
+        CodecText,
+        ColorFormatText,
+        ZeroCopyText,
+        ImageFormatText);
     ActiveConfigTextBlock->SetText(ConfigText);
 
     if (LastStillTextBlock.IsValid())
@@ -1193,26 +1367,51 @@ void SOmniCaptureControlPanel::RefreshConfigurationSummary()
     const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
 
     const FIntPoint PerEyeSize = Snapshot.GetPerEyeOutputResolution();
-    const FIntPoint OutputSize = Snapshot.GetEquirectResolution();
+    const FIntPoint OutputSize = Snapshot.GetOutputResolution();
     const int32 Alignment = Snapshot.GetEncoderAlignmentRequirement();
 
     if (DerivedPerEyeTextBlock.IsValid())
     {
-        DerivedPerEyeTextBlock->SetText(FText::Format(LOCTEXT("PerEyeSummary", "Per-eye output: {0}×{1}"), FText::AsNumber(PerEyeSize.X), FText::AsNumber(PerEyeSize.Y)));
+        if (Snapshot.IsPlanar())
+        {
+            const FIntPoint BasePlanar(FMath::Max(1, Snapshot.PlanarResolution.X), FMath::Max(1, Snapshot.PlanarResolution.Y));
+            DerivedPerEyeTextBlock->SetText(FText::Format(LOCTEXT("PlanarBaseSummary", "Planar base: {0}×{1}"), FText::AsNumber(BasePlanar.X), FText::AsNumber(BasePlanar.Y)));
+        }
+        else
+        {
+            DerivedPerEyeTextBlock->SetText(FText::Format(LOCTEXT("PerEyeSummary", "Per-eye output: {0}×{1}"), FText::AsNumber(PerEyeSize.X), FText::AsNumber(PerEyeSize.Y)));
+        }
     }
     if (DerivedOutputTextBlock.IsValid())
     {
-        DerivedOutputTextBlock->SetText(FText::Format(LOCTEXT("OutputSummary", "Final frame: {0}×{1} ({2})"),
-            FText::AsNumber(OutputSize.X),
-            FText::AsNumber(OutputSize.Y),
-            LayoutToText(Snapshot)));
+        if (Snapshot.IsPlanar())
+        {
+            DerivedOutputTextBlock->SetText(FText::Format(LOCTEXT("PlanarOutputSummary", "Final frame: {0}×{1} (Scale ×{2})"),
+                FText::AsNumber(OutputSize.X),
+                FText::AsNumber(OutputSize.Y),
+                FText::AsNumber(FMath::Max(1, Snapshot.PlanarIntegerScale))));
+        }
+        else
+        {
+            DerivedOutputTextBlock->SetText(FText::Format(LOCTEXT("OutputSummary", "Final frame: {0}×{1} ({2})"),
+                FText::AsNumber(OutputSize.X),
+                FText::AsNumber(OutputSize.Y),
+                LayoutToText(Snapshot)));
+        }
     }
     if (DerivedFOVTextBlock.IsValid())
     {
-        const FText FovText = FText::Format(LOCTEXT("FOVSummary", "FOV: {0}° horizontal × {1}° vertical"),
-            FText::AsNumber(Snapshot.GetHorizontalFOVDegrees()),
-            FText::AsNumber(Snapshot.GetVerticalFOVDegrees()));
-        DerivedFOVTextBlock->SetText(FovText);
+        if (Snapshot.IsPlanar())
+        {
+            DerivedFOVTextBlock->SetText(LOCTEXT("FOVSummaryPlanar", "FOV: N/A for planar projection"));
+        }
+        else
+        {
+            const FText FovText = FText::Format(LOCTEXT("FOVSummary", "FOV: {0}° horizontal × {1}° vertical"),
+                FText::AsNumber(Snapshot.GetHorizontalFOVDegrees()),
+                FText::AsNumber(Snapshot.GetVerticalFOVDegrees()));
+            DerivedFOVTextBlock->SetText(FovText);
+        }
     }
     if (EncoderAlignmentTextBlock.IsValid())
     {
@@ -1234,6 +1433,14 @@ void SOmniCaptureControlPanel::RefreshConfigurationSummary()
     if (ColorFormatCombo.IsValid())
     {
         ColorFormatCombo->SetSelectedItem(FindColorFormatOption(Snapshot.NVENCColorFormat));
+    }
+    if (ProjectionCombo.IsValid())
+    {
+        ProjectionCombo->SetSelectedItem(FindProjectionOption(Snapshot.Projection));
+    }
+    if (ImageFormatCombo.IsValid())
+    {
+        ImageFormatCombo->SetSelectedItem(FindImageFormatOption(Snapshot.ImageFormat));
     }
 }
 
@@ -1326,6 +1533,38 @@ void SOmniCaptureControlPanel::ApplyPerEyeHeight(int32 NewHeight)
     });
 }
 
+void SOmniCaptureControlPanel::ApplyPlanarWidth(int32 NewWidth)
+{
+    ModifyCaptureSettings([NewWidth](FOmniCaptureSettings& Settings)
+    {
+        Settings.PlanarResolution.X = FMath::Max(16, NewWidth);
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyPlanarHeight(int32 NewHeight)
+{
+    ModifyCaptureSettings([NewHeight](FOmniCaptureSettings& Settings)
+    {
+        Settings.PlanarResolution.Y = FMath::Max(16, NewHeight);
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyPlanarScale(int32 NewScale)
+{
+    ModifyCaptureSettings([NewScale](FOmniCaptureSettings& Settings)
+    {
+        Settings.PlanarIntegerScale = FMath::Clamp(NewScale, 1, 16);
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyProjection(EOmniCaptureProjection Projection)
+{
+    ModifyCaptureSettings([Projection](FOmniCaptureSettings& Settings)
+    {
+        Settings.Projection = Projection;
+    });
+}
+
 void SOmniCaptureControlPanel::ApplyOutputFormat(EOmniOutputFormat Format)
 {
     ModifyCaptureSettings([Format](FOmniCaptureSettings& Settings)
@@ -1347,6 +1586,14 @@ void SOmniCaptureControlPanel::ApplyColorFormat(EOmniCaptureColorFormat Format)
     ModifyCaptureSettings([Format](FOmniCaptureSettings& Settings)
     {
         Settings.NVENCColorFormat = Format;
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyImageFormat(EOmniCaptureImageFormat Format)
+{
+    ModifyCaptureSettings([Format](FOmniCaptureSettings& Settings)
+    {
+        Settings.ImageFormat = Format;
     });
 }
 
@@ -1424,6 +1671,20 @@ TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateStereoLayoutOption(TShared
     return SNew(STextBlock).Text(Label);
 }
 
+void SOmniCaptureControlPanel::HandleProjectionChanged(TSharedPtr<EOmniCaptureProjection> NewProjection, ESelectInfo::Type SelectInfo)
+{
+    if (NewProjection.IsValid())
+    {
+        ApplyProjection(*NewProjection);
+    }
+}
+
+TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateProjectionOption(TSharedPtr<EOmniCaptureProjection> InValue) const
+{
+    const EOmniCaptureProjection Projection = InValue.IsValid() ? *InValue : EOmniCaptureProjection::Equirectangular;
+    return SNew(STextBlock).Text(ProjectionToText(Projection));
+}
+
 int32 SOmniCaptureControlPanel::GetPerEyeWidthValue() const
 {
     return GetSettingsSnapshot().GetPerEyeOutputResolution().X;
@@ -1434,6 +1695,21 @@ int32 SOmniCaptureControlPanel::GetPerEyeHeightValue() const
     return GetSettingsSnapshot().GetPerEyeOutputResolution().Y;
 }
 
+int32 SOmniCaptureControlPanel::GetPlanarWidthValue() const
+{
+    return GetSettingsSnapshot().PlanarResolution.X;
+}
+
+int32 SOmniCaptureControlPanel::GetPlanarHeightValue() const
+{
+    return GetSettingsSnapshot().PlanarResolution.Y;
+}
+
+int32 SOmniCaptureControlPanel::GetPlanarScaleValue() const
+{
+    return GetSettingsSnapshot().PlanarIntegerScale;
+}
+
 void SOmniCaptureControlPanel::HandlePerEyeWidthCommitted(int32 NewValue, ETextCommit::Type CommitType)
 {
     ApplyPerEyeWidth(FMath::Max(1, NewValue));
@@ -1442,6 +1718,21 @@ void SOmniCaptureControlPanel::HandlePerEyeWidthCommitted(int32 NewValue, ETextC
 void SOmniCaptureControlPanel::HandlePerEyeHeightCommitted(int32 NewValue, ETextCommit::Type CommitType)
 {
     ApplyPerEyeHeight(FMath::Max(1, NewValue));
+}
+
+void SOmniCaptureControlPanel::HandlePlanarWidthCommitted(int32 NewValue, ETextCommit::Type CommitType)
+{
+    ApplyPlanarWidth(FMath::Max(16, NewValue));
+}
+
+void SOmniCaptureControlPanel::HandlePlanarHeightCommitted(int32 NewValue, ETextCommit::Type CommitType)
+{
+    ApplyPlanarHeight(FMath::Max(16, NewValue));
+}
+
+void SOmniCaptureControlPanel::HandlePlanarScaleCommitted(int32 NewValue, ETextCommit::Type CommitType)
+{
+    ApplyPlanarScale(FMath::Max(1, NewValue));
 }
 
 ECheckBoxState SOmniCaptureControlPanel::GetMetadataToggleState(EMetadataToggle Toggle) const
@@ -1546,6 +1837,30 @@ TSharedPtr<EOmniCaptureColorFormat> SOmniCaptureControlPanel::FindColorFormatOpt
     return ColorFormatOptions.Num() > 0 ? ColorFormatOptions[0] : nullptr;
 }
 
+TSharedPtr<EOmniCaptureProjection> SOmniCaptureControlPanel::FindProjectionOption(EOmniCaptureProjection Projection) const
+{
+    for (const TSharedPtr<EOmniCaptureProjection>& Option : ProjectionOptions)
+    {
+        if (Option.IsValid() && *Option == Projection)
+        {
+            return Option;
+        }
+    }
+    return ProjectionOptions.Num() > 0 ? ProjectionOptions[0] : nullptr;
+}
+
+TSharedPtr<EOmniCaptureImageFormat> SOmniCaptureControlPanel::FindImageFormatOption(EOmniCaptureImageFormat Format) const
+{
+    for (const TSharedPtr<EOmniCaptureImageFormat>& Option : ImageFormatOptions)
+    {
+        if (Option.IsValid() && *Option == Format)
+        {
+            return Option;
+        }
+    }
+    return ImageFormatOptions.Num() > 0 ? ImageFormatOptions[0] : nullptr;
+}
+
 void SOmniCaptureControlPanel::HandleOutputFormatChanged(TSharedPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo)
 {
     if (NewFormat.IsValid())
@@ -1568,6 +1883,20 @@ void SOmniCaptureControlPanel::HandleColorFormatChanged(TSharedPtr<EOmniCaptureC
     {
         ApplyColorFormat(*NewFormat);
     }
+}
+
+void SOmniCaptureControlPanel::HandleImageFormatChanged(TSharedPtr<EOmniCaptureImageFormat> NewFormat, ESelectInfo::Type SelectInfo)
+{
+    if (NewFormat.IsValid())
+    {
+        ApplyImageFormat(*NewFormat);
+    }
+}
+
+TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateImageFormatOption(TSharedPtr<EOmniCaptureImageFormat> InValue) const
+{
+    const EOmniCaptureImageFormat Format = InValue.IsValid() ? *InValue : EOmniCaptureImageFormat::PNG;
+    return SNew(STextBlock).Text(ImageFormatToText(Format));
 }
 
 int32 SOmniCaptureControlPanel::GetTargetBitrate() const

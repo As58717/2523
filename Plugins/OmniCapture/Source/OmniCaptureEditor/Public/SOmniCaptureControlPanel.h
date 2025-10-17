@@ -54,9 +54,14 @@ private:
     void ApplyStereoLayout(EOmniCaptureStereoLayout Layout);
     void ApplyPerEyeWidth(int32 NewWidth);
     void ApplyPerEyeHeight(int32 NewHeight);
+    void ApplyPlanarWidth(int32 NewWidth);
+    void ApplyPlanarHeight(int32 NewHeight);
+    void ApplyPlanarScale(int32 NewScale);
+    void ApplyProjection(EOmniCaptureProjection Projection);
     void ApplyOutputFormat(EOmniOutputFormat Format);
     void ApplyCodec(EOmniCaptureCodec Codec);
     void ApplyColorFormat(EOmniCaptureColorFormat Format);
+    void ApplyImageFormat(EOmniCaptureImageFormat Format);
     void ApplyMetadataToggle(EMetadataToggle Toggle, bool bEnabled);
 
     ECheckBoxState GetVRModeCheckState(bool bVR180) const;
@@ -66,11 +71,21 @@ private:
     FText GetStereoLayoutDisplayText() const;
     void HandleStereoLayoutChanged(TSharedPtr<EOmniCaptureStereoLayout> NewValue, ESelectInfo::Type SelectInfo);
     TSharedRef<SWidget> GenerateStereoLayoutOption(TSharedPtr<EOmniCaptureStereoLayout> InValue) const;
+    void HandleProjectionChanged(TSharedPtr<EOmniCaptureProjection> NewProjection, ESelectInfo::Type SelectInfo);
+    TSharedRef<SWidget> GenerateProjectionOption(TSharedPtr<EOmniCaptureProjection> InValue) const;
+    void HandleImageFormatChanged(TSharedPtr<EOmniCaptureImageFormat> NewFormat, ESelectInfo::Type SelectInfo);
+    TSharedRef<SWidget> GenerateImageFormatOption(TSharedPtr<EOmniCaptureImageFormat> InValue) const;
 
     int32 GetPerEyeWidthValue() const;
     int32 GetPerEyeHeightValue() const;
+    int32 GetPlanarWidthValue() const;
+    int32 GetPlanarHeightValue() const;
+    int32 GetPlanarScaleValue() const;
     void HandlePerEyeWidthCommitted(int32 NewValue, ETextCommit::Type CommitType);
     void HandlePerEyeHeightCommitted(int32 NewValue, ETextCommit::Type CommitType);
+    void HandlePlanarWidthCommitted(int32 NewValue, ETextCommit::Type CommitType);
+    void HandlePlanarHeightCommitted(int32 NewValue, ETextCommit::Type CommitType);
+    void HandlePlanarScaleCommitted(int32 NewValue, ETextCommit::Type CommitType);
 
     ECheckBoxState GetMetadataToggleState(EMetadataToggle Toggle) const;
     void HandleMetadataToggleChanged(ECheckBoxState NewState, EMetadataToggle Toggle);
@@ -82,6 +97,8 @@ private:
     TSharedPtr<EOmniOutputFormat> FindOutputFormatOption(EOmniOutputFormat Format) const;
     TSharedPtr<EOmniCaptureCodec> FindCodecOption(EOmniCaptureCodec Codec) const;
     TSharedPtr<EOmniCaptureColorFormat> FindColorFormatOption(EOmniCaptureColorFormat Format) const;
+    TSharedPtr<EOmniCaptureProjection> FindProjectionOption(EOmniCaptureProjection Projection) const;
+    TSharedPtr<EOmniCaptureImageFormat> FindImageFormatOption(EOmniCaptureImageFormat Format) const;
 
     void HandleOutputFormatChanged(TSharedPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo);
     void HandleCodecChanged(TSharedPtr<EOmniCaptureCodec> NewCodec, ESelectInfo::Type SelectInfo);
@@ -128,9 +145,13 @@ private:
     TArray<TSharedPtr<EOmniOutputFormat>> OutputFormatOptions;
     TArray<TSharedPtr<EOmniCaptureCodec>> CodecOptions;
     TArray<TSharedPtr<EOmniCaptureColorFormat>> ColorFormatOptions;
+    TArray<TSharedPtr<EOmniCaptureProjection>> ProjectionOptions;
+    TArray<TSharedPtr<EOmniCaptureImageFormat>> ImageFormatOptions;
 
     TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureStereoLayout>>> StereoLayoutCombo;
     TSharedPtr<SComboBox<TSharedPtr<EOmniOutputFormat>>> OutputFormatCombo;
     TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureCodec>>> CodecCombo;
     TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureColorFormat>>> ColorFormatCombo;
+    TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureProjection>>> ProjectionCombo;
+    TSharedPtr<SComboBox<TSharedPtr<EOmniCaptureImageFormat>>> ImageFormatCombo;
 };

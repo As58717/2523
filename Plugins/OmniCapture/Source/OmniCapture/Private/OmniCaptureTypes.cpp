@@ -19,10 +19,20 @@ namespace
         const int32 Rounded = ((Value + Alignment - 1) / Alignment) * Alignment;
         return FMath::Max(Alignment, Rounded);
     }
+
+    FORCEINLINE FIntPoint AlignPoint(const FIntPoint& Value, int32 Alignment)
+    {
+        return FIntPoint(AlignDimension(Value.X, Alignment), AlignDimension(Value.Y, Alignment));
+    }
 }
 
 FIntPoint FOmniCaptureSettings::GetEquirectResolution() const
 {
+    if (IsPlanar())
+    {
+        return GetPlanarResolution();
+    }
+
     const bool bHalfSphere = IsVR180();
     const int32 Alignment = GetEncoderAlignmentRequirement();
 
@@ -59,8 +69,37 @@ FIntPoint FOmniCaptureSettings::GetEquirectResolution() const
     return OutputResolution;
 }
 
+FIntPoint FOmniCaptureSettings::GetPlanarResolution() const
+{
+    FIntPoint Base = PlanarResolution;
+    Base.X = FMath::Max(1, Base.X);
+    Base.Y = FMath::Max(1, Base.Y);
+
+    const int32 Scale = FMath::Max(1, PlanarIntegerScale);
+    Base.X *= Scale;
+    Base.Y *= Scale;
+
+    const int32 Alignment = GetEncoderAlignmentRequirement();
+    Base = AlignPoint(Base, Alignment);
+
+    Base.X = FMath::Max(2, Base.X);
+    Base.Y = FMath::Max(2, Base.Y);
+
+    return Base;
+}
+
+FIntPoint FOmniCaptureSettings::GetOutputResolution() const
+{
+    return IsPlanar() ? GetPlanarResolution() : GetEquirectResolution();
+}
+
 FIntPoint FOmniCaptureSettings::GetPerEyeOutputResolution() const
 {
+    if (IsPlanar())
+    {
+        return GetPlanarResolution();
+    }
+
     const FIntPoint Output = GetEquirectResolution();
     if (!IsStereo())
     {
@@ -78,6 +117,11 @@ FIntPoint FOmniCaptureSettings::GetPerEyeOutputResolution() const
 bool FOmniCaptureSettings::IsStereo() const
 {
     return Mode == EOmniCaptureMode::Stereo;
+}
+
+bool FOmniCaptureSettings::IsPlanar() const
+{
+    return Projection == EOmniCaptureProjection::Planar2D;
 }
 
 bool FOmniCaptureSettings::IsVR180() const
@@ -123,11 +167,19 @@ int32 FOmniCaptureSettings::GetEncoderAlignmentRequirement() const
 
 float FOmniCaptureSettings::GetHorizontalFOVDegrees() const
 {
+    if (IsPlanar())
+    {
+        return 90.0f;
+    }
     return IsVR180() ? 180.0f : 360.0f;
 }
 
 float FOmniCaptureSettings::GetVerticalFOVDegrees() const
 {
+    if (IsPlanar())
+    {
+        return 90.0f;
+    }
     return 180.0f;
 }
 
@@ -139,4 +191,18 @@ float FOmniCaptureSettings::GetLongitudeSpanRadians() const
 float FOmniCaptureSettings::GetLatitudeSpanRadians() const
 {
     return FMath::DegreesToRadians(GetVerticalFOVDegrees() * 0.5f);
+}
+
+FString FOmniCaptureSettings::GetImageFileExtension() const
+{
+    switch (ImageFormat)
+    {
+    case EOmniCaptureImageFormat::JPG:
+        return TEXT(".jpg");
+    case EOmniCaptureImageFormat::EXR:
+        return TEXT(".exr");
+    case EOmniCaptureImageFormat::PNG:
+    default:
+        return TEXT(".png");
+    }
 }
