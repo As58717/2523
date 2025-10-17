@@ -907,7 +907,13 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
     }
 
     bool bSupportsCompute = GDynamicRHI != nullptr;
+#if defined(GRHISupportsComputeShaders)
     bSupportsCompute = bSupportsCompute && GRHISupportsComputeShaders;
+#elif defined(GSupportsComputeShaders)
+    bSupportsCompute = bSupportsCompute && GSupportsComputeShaders;
+#else
+    bSupportsCompute = bSupportsCompute && RHISupportsComputeShaders(GMaxRHIShaderPlatform);
+#endif
     if (!bSupportsCompute)
     {
         ConvertOnCPU(Settings, LeftEye, RightEye, Result);

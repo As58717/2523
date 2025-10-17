@@ -143,7 +143,7 @@ bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData,
     }
 
     const FIntPoint Size = PixelData.GetSize();
-    const TArray<FColor>& Pixels = PixelData.Pixels;
+    const TArray64<FColor>& Pixels = PixelData.Pixels;
     if (Pixels.Num() != Size.X * Size.Y)
     {
         return false;
@@ -177,7 +177,12 @@ bool FOmniCaptureImageWriter::WritePNGFromLinear(const TImagePixelData<FFloat16C
     Converted.SetNum(ExpectedCount);
     for (int32 Index = 0; Index < ExpectedCount; ++Index)
     {
-        const FLinearColor Linear = PixelData.Pixels[Index].GetLinearColor();
+        const FFloat16Color& Pixel = PixelData.Pixels[Index];
+        const FLinearColor Linear(
+            Pixel.R.GetFloat(),
+            Pixel.G.GetFloat(),
+            Pixel.B.GetFloat(),
+            Pixel.A.GetFloat());
         Converted[Index] = Linear.ToFColor(true);
     }
 
@@ -195,7 +200,7 @@ bool FOmniCaptureImageWriter::WriteJPEG(const TImagePixelData<FColor>& PixelData
     }
 
     const FIntPoint Size = PixelData.GetSize();
-    const TArray<FColor>& Pixels = PixelData.Pixels;
+    const TArray64<FColor>& Pixels = PixelData.Pixels;
     if (Pixels.Num() != Size.X * Size.Y)
     {
         return false;
@@ -229,7 +234,12 @@ bool FOmniCaptureImageWriter::WriteJPEGFromLinear(const TImagePixelData<FFloat16
     Converted.SetNum(ExpectedCount);
     for (int32 Index = 0; Index < ExpectedCount; ++Index)
     {
-        const FLinearColor Linear = PixelData.Pixels[Index].GetLinearColor();
+        const FFloat16Color& Pixel = PixelData.Pixels[Index];
+        const FLinearColor Linear(
+            Pixel.R.GetFloat(),
+            Pixel.G.GetFloat(),
+            Pixel.B.GetFloat(),
+            Pixel.A.GetFloat());
         Converted[Index] = Linear.ToFColor(true);
     }
 
@@ -247,7 +257,7 @@ bool FOmniCaptureImageWriter::WriteEXR(const TImagePixelData<FFloat16Color>& Pix
     }
 
     const FIntPoint Size = PixelData.GetSize();
-    const TArray<FFloat16Color>& Pixels = PixelData.Pixels;
+    const TArray64<FFloat16Color>& Pixels = PixelData.Pixels;
     if (Pixels.Num() != Size.X * Size.Y)
     {
         return false;
@@ -307,7 +317,7 @@ void FOmniCaptureImageWriter::PruneCompletedTasks()
             {
                 UE_LOG(LogTemp, Warning, TEXT("OmniCapture image write task failed"));
             }
-            PendingTasks.RemoveAtSwap(Index, 1, false);
+            PendingTasks.RemoveAtSwap(Index, 1, EAllowShrinking::No);
         }
     }
 }
