@@ -629,6 +629,104 @@ namespace
     }
 }
 
+    void ConvertPlanarOnRenderThread(const FOmniCaptureSettings Settings, FTextureRHIRef SourceTexture, const FIntPoint OutputSize, bool bSourceLinear, FOmniCaptureEquirectResult& OutResult)
+    {
+        if (!SourceTexture.IsValid())
+        {
+            return;
+        }
+
+        const int32 OutputWidth = OutputSize.X;
+        const int32 OutputHeight = OutputSize.Y;
+
+        FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+        FRDGBuilder GraphBuilder(RHICmdList);
+
+        FRDGTextureRef Source = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(SourceTexture, TEXT("OmniPlanarSource")));
+
+        FRDGTextureRef LumaTexture = nullptr;
+        FRDGTextureRef ChromaTexture = nullptr;
+        FRDGTextureRef BGRATexture = nullptr;
+
+        if (Settings.OutputFormat == EOmniOutputFormat::NVENCHardware)
+        {
+            if (Settings.NVENCColorFormat == EOmniCaptureColorFormat::BGRA)
+            {
+                BGRATexture = AddBGRAPackingPass(GraphBuilder, Settings, bSourceLinear, OutputWidth, OutputHeight, Source);
+            }
+            else
+            {
+                AddYUVConversionPasses(GraphBuilder, Settings, bSourceLinear, OutputWidth, OutputHeight, Source, LumaTexture, ChromaTexture);
+            }
+        }
+
+        TRefCountPtr<IPooledRenderTarget> ExtractedSource;
+        TRefCountPtr<IPooledRenderTarget> ExtractedLuma;
+        TRefCountPtr<IPooledRenderTarget> ExtractedChroma;
+        TRefCountPtr<IPooledRenderTarget> ExtractedBGRA;
+
+        GraphBuilder.QueueTextureExtraction(Source, &ExtractedSource);
+        if (LumaTexture)
+        {
+            GraphBuilder.QueueTextureExtraction(LumaTexture, &ExtractedLuma);
+        }
+        if (ChromaTexture)
+        {
+            GraphBuilder.QueueTextureExtraction(ChromaTexture, &ExtractedChroma);
+        }
+        if (BGRATexture)
+        {
+            GraphBuilder.QueueTextureExtraction(BGRATexture, &ExtractedBGRA);
+        }
+
+        GraphBuilder.Execute();
+
+        OutResult.OutputTarget = ExtractedSource;
+        OutResult.GPUSource = ExtractedSource;
+        OutResult.Texture = SourceTexture;
+        OutResult.Size = OutputSize;
+        OutResult.bIsLinear = bSourceLinear;
+        OutResult.bUsedCPUFallback = false;
+        OutResult.EncoderPlanes.Reset();
+        OutResult.ReadyFence.SafeRelease();
+
+        if (Settings.OutputFormat == EOmniOutputFormat::NVENCHardware)
+        {
+            if (Settings.NVENCColorFormat == EOmniCaptureColorFormat::BGRA)
+            {
+                if (ExtractedBGRA.IsValid())
+                {
+                    OutResult.EncoderPlanes.Add(ExtractedBGRA);
+                    if (FRHITexture* BGRAResource = ExtractedBGRA->GetRHI())
+                    {
+                        OutResult.Texture = BGRAResource;
+                    }
+                }
+            }
+            else
+            {
+                if (ExtractedLuma.IsValid())
+                {
+                    OutResult.EncoderPlanes.Add(ExtractedLuma);
+                }
+                if (ExtractedChroma.IsValid())
+                {
+                    OutResult.EncoderPlanes.Add(ExtractedChroma);
+                }
+            }
+
+            if (OutResult.Texture.IsValid())
+            {
+                FGPUFenceRHIRef Fence = RHICreateGPUFence(TEXT("OmniPlanarFence"));
+                if (Fence.IsValid())
+                {
+                    RHICmdList.WriteGPUFence(Fence);
+                    OutResult.ReadyFence = Fence;
+                }
+            }
+        }
+    }
+
 namespace
 {
     void ConvertOnCPU(const FOmniCaptureSettings& Settings, const FOmniEyeCapture& LeftEye, const FOmniEyeCapture& RightEye, FOmniCaptureEquirectResult& OutResult)
@@ -804,6 +902,120 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
     if (!Result.PixelData.IsValid() && (!Result.Texture.IsValid() || !Result.OutputTarget.IsValid()))
     {
         ConvertOnCPU(Settings, LeftEye, RightEye, Result);
+    }
+
+    return Result;
+}
+
+FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToPlanar(const FOmniCaptureSettings& Settings, const FOmniEyeCapture& SourceEye)
+{
+    FOmniCaptureEquirectResult Result;
+
+    if (!Settings.IsPlanar())
+    {
+        return Result;
+    }
+
+    UTextureRenderTarget2D* RenderTarget = SourceEye.GetPrimaryRenderTarget();
+    if (!RenderTarget)
+    {
+        return Result;
+    }
+
+    FTextureRenderTargetResource* Resource = RenderTarget->GameThread_GetRenderTargetResource();
+    if (!Resource)
+    {
+        return Result;
+    }
+
+    const FIntPoint OutputSize(RenderTarget->SizeX, RenderTarget->SizeY);
+    if (OutputSize.X <= 0 || OutputSize.Y <= 0)
+    {
+        return Result;
+    }
+
+    Result.Size = OutputSize;
+    Result.bIsLinear = Settings.Gamma == EOmniCaptureGamma::Linear;
+    Result.bUsedCPUFallback = false;
+    Result.ReadyFence.SafeRelease();
+    Result.EncoderPlanes.Reset();
+    Result.OutputTarget.SafeRelease();
+    Result.GPUSource.SafeRelease();
+
+    const int32 PixelCount = OutputSize.X * OutputSize.Y;
+
+    if (Result.bIsLinear)
+    {
+        TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutputSize);
+        PixelData->Pixels.SetNum(PixelCount);
+        if (!Resource->ReadFloat16Pixels(PixelData->Pixels))
+        {
+            PixelData.Reset();
+        }
+        else
+        {
+            Result.PixelData = MoveTemp(PixelData);
+        }
+    }
+    else
+    {
+        TUniquePtr<TImagePixelData<FColor>> PixelData = MakeUnique<TImagePixelData<FColor>>(OutputSize);
+        PixelData->Pixels.SetNum(PixelCount);
+        if (!Resource->ReadPixels(PixelData->Pixels))
+        {
+            PixelData.Reset();
+        }
+        else
+        {
+            Result.PixelData = MoveTemp(PixelData);
+        }
+    }
+
+    if (!Result.PixelData.IsValid())
+    {
+        Result.PreviewPixels.Reset();
+        return Result;
+    }
+
+    Result.PreviewPixels.SetNum(PixelCount);
+    if (Result.bIsLinear)
+    {
+        const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(Result.PixelData.Get());
+        if (FloatData)
+        {
+            for (int32 Index = 0; Index < PixelCount; ++Index)
+            {
+                Result.PreviewPixels[Index] = FLinearColor(FloatData->Pixels[Index]).ToFColor(true);
+            }
+        }
+    }
+    else
+    {
+        const TImagePixelData<FColor>* ColorData = static_cast<const TImagePixelData<FColor>*>(Result.PixelData.Get());
+        if (ColorData)
+        {
+            Result.PreviewPixels = ColorData->Pixels;
+        }
+    }
+
+    if (Result.PreviewPixels.Num() != PixelCount)
+    {
+        Result.PreviewPixels.Init(FColor::Black, PixelCount);
+    }
+
+    Result.Texture = Resource->GetRenderTargetTexture();
+
+    if (Result.Texture.IsValid() && Settings.OutputFormat == EOmniOutputFormat::NVENCHardware)
+    {
+        FEvent* CompletionEvent = FPlatformProcess::GetSynchEventFromPool();
+        ENQUEUE_RENDER_COMMAND(OmniCapturePlanarConvert)([Settings, SourceTexture = Result.Texture, OutputSize, bLinear = Result.bIsLinear, &Result, CompletionEvent](FRHICommandListImmediate& RHICmdList)
+        {
+            ConvertPlanarOnRenderThread(Settings, SourceTexture, OutputSize, bLinear, Result);
+            CompletionEvent->Trigger();
+        });
+
+        CompletionEvent->Wait();
+        FPlatformProcess::ReturnSynchEventToPool(CompletionEvent);
     }
 
     return Result;

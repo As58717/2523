@@ -22,5 +22,6 @@ class OMNICAPTURE_API FOmniCaptureEquirectConverter
 {
 public:
     static FOmniCaptureEquirectResult ConvertToEquirectangular(const FOmniCaptureSettings& Settings, const FOmniEyeCapture& LeftEye, const FOmniEyeCapture& RightEye);
+    static FOmniCaptureEquirectResult ConvertToPlanar(const FOmniCaptureSettings& Settings, const FOmniEyeCapture& SourceEye);
 };
 

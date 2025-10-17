@@ -1,4 +1,4 @@
-#include "OmniCapturePNGWriter.h"
+#include "OmniCaptureImageWriter.h"
 
 #if __has_include("ImageWriteQueue/Public/ImageWriteQueue.h")
 #include "ImageWriteQueue/Public/ImageWriteQueue.h"
@@ -13,20 +13,21 @@
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
 
-FOmniCapturePNGWriter::FOmniCapturePNGWriter() {}
-FOmniCapturePNGWriter::~FOmniCapturePNGWriter() { Flush(); }
+FOmniCaptureImageWriter::FOmniCaptureImageWriter() {}
+FOmniCaptureImageWriter::~FOmniCaptureImageWriter() { Flush(); }
 
-void FOmniCapturePNGWriter::Initialize(const FOmniCaptureSettings& Settings, const FString& InOutputDirectory)
+void FOmniCaptureImageWriter::Initialize(const FOmniCaptureSettings& Settings, const FString& InOutputDirectory)
 {
     OutputDirectory = InOutputDirectory.IsEmpty() ? FPaths::ProjectSavedDir() / TEXT("OmniCaptures") : InOutputDirectory;
     SequenceBaseName = Settings.OutputFileName;
     OutputDirectory = FPaths::ConvertRelativePathToFull(OutputDirectory);
     IFileManager::Get().MakeDirectory(*OutputDirectory, true);
+    TargetFormat = Settings.ImageFormat;
 
     ImageWriteQueue = MakeUnique<FImageWriteQueue>();
 }
 
-void FOmniCapturePNGWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, const FString& FrameFileName)
+void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, const FString& FrameFileName)
 {
     if (!ImageWriteQueue.IsValid() || !Frame.IsValid())
     {
@@ -34,11 +35,29 @@ void FOmniCapturePNGWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, 
     }
 
     TUniquePtr<FImageWriteTask> Task = MakeUnique<FImageWriteTask>();
-    Task->Format = EImageFormat::PNG;
     Task->Filename = OutputDirectory / FrameFileName;
-    Task->CompressionQuality = static_cast<int32>(EImageCompressionQuality::Uncompressed);
     Task->bOverwriteFile = true;
     Task->PixelData = MoveTemp(Frame->PixelData);
+
+    switch (TargetFormat)
+    {
+    case EOmniCaptureImageFormat::JPG:
+        Task->Format = EImageFormat::JPEG;
+        Task->CompressionQuality = static_cast<int32>(EImageCompressionQuality::Default);
+        Task->bWriteGammaCorrectedToSRGB = true;
+        break;
+    case EOmniCaptureImageFormat::EXR:
+        Task->Format = EImageFormat::EXR;
+        Task->CompressionQuality = static_cast<int32>(EImageCompressionQuality::Uncompressed);
+        Task->bWriteGammaCorrectedToSRGB = false;
+        break;
+    case EOmniCaptureImageFormat::PNG:
+    default:
+        Task->Format = EImageFormat::PNG;
+        Task->CompressionQuality = static_cast<int32>(EImageCompressionQuality::Uncompressed);
+        Task->bWriteGammaCorrectedToSRGB = true;
+        break;
+    }
 
     ImageWriteQueue->Enqueue(MoveTemp(Task));
 
@@ -46,7 +65,7 @@ void FOmniCapturePNGWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, 
     CapturedMetadata.Add(Frame->Metadata);
 }
 
-void FOmniCapturePNGWriter::Flush()
+void FOmniCaptureImageWriter::Flush()
 {
     if (ImageWriteQueue.IsValid())
     {
@@ -55,7 +74,7 @@ void FOmniCapturePNGWriter::Flush()
     }
 }
 
-TArray<FOmniCaptureFrameMetadata> FOmniCapturePNGWriter::ConsumeCapturedFrames()
+TArray<FOmniCaptureFrameMetadata> FOmniCaptureImageWriter::ConsumeCapturedFrames()
 {
     FScopeLock Lock(&MetadataCS);
     TArray<FOmniCaptureFrameMetadata> Result = MoveTemp(CapturedMetadata);

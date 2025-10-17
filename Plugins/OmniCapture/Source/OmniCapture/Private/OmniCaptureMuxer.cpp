@@ -159,7 +159,7 @@ bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, cons
     Root->SetNumberField(TEXT("frameCount"), Frames.Num());
     Root->SetNumberField(TEXT("frameRate"), CalculateFrameRate(Frames));
     Root->SetStringField(TEXT("stereoLayout"), Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? TEXT("TopBottom") : TEXT("SideBySide"));
-    const FIntPoint OutputSize = Settings.GetEquirectResolution();
+    const FIntPoint OutputSize = Settings.GetOutputResolution();
     Root->SetNumberField(TEXT("outputWidth"), OutputSize.X);
     Root->SetNumberField(TEXT("outputHeight"), OutputSize.Y);
     Root->SetStringField(TEXT("outputLayout"), ToLayoutString(Settings));
@@ -263,7 +263,7 @@ bool FOmniCaptureMuxer::WriteSpatialMetadata(const FOmniCaptureSettings& Setting
         return true;
     }
 
-    const FIntPoint OutputSize = Settings.GetEquirectResolution();
+    const FIntPoint OutputSize = Settings.GetOutputResolution();
     if (OutputSize.X <= 0 || OutputSize.Y <= 0)
     {
         return false;
@@ -443,7 +443,7 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
     const FString StereoModeTag = Settings.GetStereoModeMetadataTag();
     const TCHAR* StereoMode = *StereoModeTag;
     const bool bHalfSphere = Settings.IsVR180();
-    const FIntPoint OutputSize = Settings.GetEquirectResolution();
+    const FIntPoint OutputSize = Settings.GetOutputResolution();
     const int32 FullPanoWidth = bHalfSphere ? OutputSize.X * 2 : OutputSize.X;
     const int32 FullPanoHeight = OutputSize.Y;
     const int32 CroppedLeft = bHalfSphere ? (FullPanoWidth - OutputSize.X) / 2 : 0;

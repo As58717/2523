@@ -6,11 +6,11 @@
 class FImageWriteQueue;
 class FImageWriteTask;
 
-class OMNICAPTURE_API FOmniCapturePNGWriter
+class OMNICAPTURE_API FOmniCaptureImageWriter
 {
 public:
-    FOmniCapturePNGWriter();
-    ~FOmniCapturePNGWriter();
+    FOmniCaptureImageWriter();
+    ~FOmniCaptureImageWriter();
 
     void Initialize(const FOmniCaptureSettings& Settings, const FString& InOutputDirectory);
     void EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, const FString& FrameFileName);
@@ -22,6 +22,7 @@ private:
     TUniquePtr<FImageWriteQueue> ImageWriteQueue;
     FString OutputDirectory;
     FString SequenceBaseName;
+    EOmniCaptureImageFormat TargetFormat = EOmniCaptureImageFormat::PNG;
 
     TArray<FOmniCaptureFrameMetadata> CapturedMetadata;
     FCriticalSection MetadataCS;
