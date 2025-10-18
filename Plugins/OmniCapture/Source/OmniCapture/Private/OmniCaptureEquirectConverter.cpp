@@ -165,7 +165,7 @@ namespace
             return false;
         }
 
-        FTextureRenderTarget2DResource* Resource = static_cast<FTextureRenderTarget2DResource*>(RenderTarget->GameThread_GetRenderTargetResource());
+        FTextureRenderTargetResource* Resource = RenderTarget->GameThread_GetRenderTargetResource();
         if (!Resource)
         {
             return false;
@@ -879,9 +879,12 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
     {
         if (UTextureRenderTarget2D* LeftTarget = LeftEye.Faces[FaceIndex].RenderTarget)
         {
-            if (FTextureRenderTarget2DResource* Resource = static_cast<FTextureRenderTarget2DResource*>(LeftTarget->GameThread_GetRenderTargetResource()))
+            if (FTextureRenderTargetResource* Resource = LeftTarget->GameThread_GetRenderTargetResource())
             {
-                LeftFaces.Add(Resource->GetRenderTargetTexture()->GetTexture2D());
+                if (FTextureRHIRef Texture = Resource->GetTextureRHI())
+                {
+                    LeftFaces.Add(Texture);
+                }
             }
         }
 
@@ -889,9 +892,12 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
         {
             if (UTextureRenderTarget2D* RightTarget = RightEye.Faces[FaceIndex].RenderTarget)
             {
-                if (FTextureRenderTarget2DResource* Resource = static_cast<FTextureRenderTarget2DResource*>(RightTarget->GameThread_GetRenderTargetResource()))
+                if (FTextureRenderTargetResource* Resource = RightTarget->GameThread_GetRenderTargetResource())
                 {
-                    RightFaces.Add(Resource->GetRenderTargetTexture()->GetTexture2D());
+                    if (FTextureRHIRef Texture = Resource->GetTextureRHI())
+                    {
+                        RightFaces.Add(Texture);
+                    }
                 }
             }
         }
@@ -955,7 +961,7 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToPlanar(const 
         return Result;
     }
 
-    FTextureRenderTarget2DResource* Resource = static_cast<FTextureRenderTarget2DResource*>(RenderTarget->GameThread_GetRenderTargetResource());
+    FTextureRenderTargetResource* Resource = RenderTarget->GameThread_GetRenderTargetResource();
     if (!Resource)
     {
         return Result;
