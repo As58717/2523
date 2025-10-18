@@ -2,25 +2,7 @@
 
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/TextureRenderTarget.h"
-#if __has_include("Rendering/TextureRenderTargetResource.h")
 #include "Rendering/TextureRenderTargetResource.h"
-#elif __has_include("RenderResource/TextureRenderTargetResource.h")
-#include "RenderResource/TextureRenderTargetResource.h"
-#elif __has_include("RenderGraphResources/TextureRenderTargetResource.h")
-#include "RenderGraphResources/TextureRenderTargetResource.h"
-#elif __has_include("Renderer/TextureRenderTargetResource.h")
-#include "Renderer/TextureRenderTargetResource.h"
-#elif __has_include("Runtime/Renderer/Public/TextureRenderTargetResource.h")
-#include "Runtime/Renderer/Public/TextureRenderTargetResource.h"
-#elif __has_include("Runtime/Engine/Public/TextureRenderTargetResource.h")
-#include "Runtime/Engine/Public/TextureRenderTargetResource.h"
-#elif __has_include("Runtime/Engine/Classes/Engine/TextureRenderTargetResource.h")
-#include "Runtime/Engine/Classes/Engine/TextureRenderTargetResource.h"
-#elif __has_include("TextureRenderTargetResource.h")
-#include "TextureRenderTargetResource.h"
-#else
-#include "Engine/TextureRenderTargetResource.h"
-#endif
 #include "OmniCaptureTypes.h"
 
 #include "GlobalShader.h"
