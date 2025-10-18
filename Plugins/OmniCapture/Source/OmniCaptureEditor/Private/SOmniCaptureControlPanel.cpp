@@ -4,11 +4,14 @@
 #include "Editor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 #include "IDesktopPlatform.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "OmniCaptureEditorSettings.h"
 #include "OmniCaptureSubsystem.h"
+#include "OmniCaptureNVENCEncoder.h"
+#include "OmniCaptureMuxer.h"
 #include "PropertyEditorModule.h"
 #include "Styling/CoreStyle.h"
 #include "Internationalization/Internationalization.h"
@@ -26,6 +29,7 @@
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
 #include "OmniCaptureTypes.h"
+#include "RHI.h"
 
 
 #define LOCTEXT_NAMESPACE "OmniCaptureControlPanel"
@@ -173,6 +177,8 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::PNG));
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::JPG));
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::EXR));
+
+    RefreshFeatureAvailability(true);
 
     auto BuildSection = [](const FText& Title, const FText& Description, const TSharedRef<SWidget>& Content) -> TSharedRef<SWidget>
     {
@@ -519,11 +525,29 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             SNew(SCheckBox)
             .IsChecked(this, &SOmniCaptureControlPanel::GetMetadataToggleState, EMetadataToggle::FFmpeg)
             .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleMetadataToggleChanged, EMetadataToggle::FFmpeg)
+            .IsEnabled_Lambda([this]()
+            {
+                return FeatureAvailability.FFmpeg.bAvailable;
+            })
+            .ToolTipText_Lambda([this]()
+            {
+                return GetFFmpegMetadataTooltip();
+            })
             .Content()
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("FFmpegMetadataToggleLabel", "Inject FFmpeg spherical metadata"))
             ]
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(20.f, 2.f, 0.f, 0.f)
+        [
+            SNew(STextBlock)
+            .Text(this, &SOmniCaptureControlPanel::GetFFmpegWarningText)
+            .Visibility(this, &SOmniCaptureControlPanel::GetFFmpegWarningVisibility)
+            .ColorAndOpacity(FSlateColor(FLinearColor::Yellow))
+            .AutoWrapText(true)
         ]
     );
 
@@ -607,10 +631,14 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             [
                 SAssignNew(OutputFormatCombo, SComboBox<TEnumOptionPtr<EOmniOutputFormat>>)
                 .OptionsSource(&OutputFormatOptions)
-                .OnGenerateWidget_Lambda([](TEnumOptionPtr<EOmniOutputFormat> InItem)
+                .OnGenerateWidget_Lambda([this](TEnumOptionPtr<EOmniOutputFormat> InItem)
                 {
                     const EOmniOutputFormat Value = InItem.IsValid() ? static_cast<EOmniOutputFormat>(InItem->GetValue()) : EOmniOutputFormat::ImageSequence;
-                    return SNew(STextBlock).Text(OutputFormatToText(Value));
+                    const bool bEnabled = IsOutputFormatSelectable(Value);
+                    return SNew(STextBlock)
+                        .Text(OutputFormatToText(Value))
+                        .IsEnabled(bEnabled)
+                        .ToolTipText(GetOutputFormatTooltip(Value));
                 })
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleOutputFormatChanged)
                 [
@@ -618,6 +646,10 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                     .Text_Lambda([this]()
                     {
                         return OutputFormatToText(GetSettingsSnapshot().OutputFormat);
+                    })
+                    .ToolTipText_Lambda([this]()
+                    {
+                        return GetOutputFormatTooltip(GetSettingsSnapshot().OutputFormat);
                     })
                 ]
             ]
@@ -659,21 +691,38 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             [
                 SAssignNew(CodecCombo, SComboBox<TEnumOptionPtr<EOmniCaptureCodec>>)
                 .OptionsSource(&CodecOptions)
-                .OnGenerateWidget_Lambda([](TEnumOptionPtr<EOmniCaptureCodec> InItem)
+                .OnGenerateWidget_Lambda([this](TEnumOptionPtr<EOmniCaptureCodec> InItem)
                 {
                     const EOmniCaptureCodec Value = InItem.IsValid() ? static_cast<EOmniCaptureCodec>(InItem->GetValue()) : EOmniCaptureCodec::H264;
-                    return SNew(STextBlock).Text(CodecToText(Value));
+                    const bool bEnabled = IsCodecSelectable(Value);
+                    return SNew(STextBlock)
+                        .Text(CodecToText(Value))
+                        .IsEnabled(bEnabled)
+                        .ToolTipText(GetCodecTooltip(Value));
                 })
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleCodecChanged)
                 .IsEnabled_Lambda([this]()
                 {
-                    return GetSettingsSnapshot().OutputFormat == EOmniOutputFormat::NVENCHardware;
+                    return GetSettingsSnapshot().OutputFormat == EOmniOutputFormat::NVENCHardware && FeatureAvailability.NVENC.bAvailable;
+                })
+                .ToolTipText_Lambda([this]()
+                {
+                    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+                    if (Snapshot.OutputFormat != EOmniOutputFormat::NVENCHardware)
+                    {
+                        return LOCTEXT("CodecComboTooltipInactive", "Codec selection is only available for NVENC output.");
+                    }
+                    return FeatureAvailability.NVENC.bAvailable ? LOCTEXT("CodecComboTooltip", "Select the NVENC codec to encode with.") : FeatureAvailability.NVENC.Reason;
                 })
                 [
                     SNew(STextBlock)
                     .Text_Lambda([this]()
                     {
                         return CodecToText(GetSettingsSnapshot().Codec);
+                    })
+                    .ToolTipText_Lambda([this]()
+                    {
+                        return GetCodecTooltip(GetSettingsSnapshot().Codec);
                     })
                 ]
             ]
@@ -687,21 +736,38 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             [
                 SAssignNew(ColorFormatCombo, SComboBox<TEnumOptionPtr<EOmniCaptureColorFormat>>)
                 .OptionsSource(&ColorFormatOptions)
-                .OnGenerateWidget_Lambda([](TEnumOptionPtr<EOmniCaptureColorFormat> InItem)
+                .OnGenerateWidget_Lambda([this](TEnumOptionPtr<EOmniCaptureColorFormat> InItem)
                 {
                     const EOmniCaptureColorFormat Value = InItem.IsValid() ? static_cast<EOmniCaptureColorFormat>(InItem->GetValue()) : EOmniCaptureColorFormat::NV12;
-                    return SNew(STextBlock).Text(FormatToText(Value));
+                    const bool bEnabled = IsColorFormatSelectable(Value);
+                    return SNew(STextBlock)
+                        .Text(FormatToText(Value))
+                        .IsEnabled(bEnabled)
+                        .ToolTipText(GetColorFormatTooltip(Value));
                 })
                 .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleColorFormatChanged)
                 .IsEnabled_Lambda([this]()
                 {
-                    return GetSettingsSnapshot().OutputFormat == EOmniOutputFormat::NVENCHardware;
+                    return GetSettingsSnapshot().OutputFormat == EOmniOutputFormat::NVENCHardware && FeatureAvailability.NVENC.bAvailable;
+                })
+                .ToolTipText_Lambda([this]()
+                {
+                    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+                    if (Snapshot.OutputFormat != EOmniOutputFormat::NVENCHardware)
+                    {
+                        return LOCTEXT("ColorFormatTooltipInactive", "Color format selection is only available for NVENC output.");
+                    }
+                    return FeatureAvailability.NVENC.bAvailable ? LOCTEXT("ColorFormatTooltip", "Choose the NVENC input color format.") : FeatureAvailability.NVENC.Reason;
                 })
                 [
                     SNew(STextBlock)
                     .Text_Lambda([this]()
                     {
                         return FormatToText(GetSettingsSnapshot().NVENCColorFormat);
+                    })
+                    .ToolTipText_Lambda([this]()
+                    {
+                        return GetColorFormatTooltip(GetSettingsSnapshot().NVENCColorFormat);
                     })
                 ]
             ]
@@ -768,6 +834,16 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
+        .Padding(0.f, 4.f, 0.f, 0.f)
+        [
+            SNew(STextBlock)
+            .Text(this, &SOmniCaptureControlPanel::GetNVENCWarningText)
+            .Visibility(this, &SOmniCaptureControlPanel::GetNVENCWarningVisibility)
+            .ColorAndOpacity(FSlateColor(FLinearColor::Yellow))
+            .AutoWrapText(true)
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
         .Padding(0.f, 6.f, 0.f, 0.f)
         [
             SNew(SCheckBox)
@@ -775,13 +851,36 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleZeroCopyChanged)
             .IsEnabled_Lambda([this]()
             {
-                return GetSettingsSnapshot().OutputFormat == EOmniOutputFormat::NVENCHardware;
+                return GetSettingsSnapshot().OutputFormat == EOmniOutputFormat::NVENCHardware && FeatureAvailability.NVENC.bAvailable && FeatureAvailability.ZeroCopy.bAvailable;
+            })
+            .ToolTipText_Lambda([this]()
+            {
+                const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+                if (Snapshot.OutputFormat != EOmniOutputFormat::NVENCHardware)
+                {
+                    return LOCTEXT("ZeroCopyTooltipInactive", "Zero-copy capture is only available when NVENC output is enabled.");
+                }
+                if (!FeatureAvailability.NVENC.bAvailable)
+                {
+                    return FeatureAvailability.NVENC.Reason;
+                }
+                return GetZeroCopyTooltip();
             })
             .Content()
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("ZeroCopyToggle", "Enable zero-copy NVENC"))
             ]
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(20.f, 2.f, 0.f, 4.f)
+        [
+            SNew(STextBlock)
+            .Text(this, &SOmniCaptureControlPanel::GetZeroCopyWarningText)
+            .Visibility(this, &SOmniCaptureControlPanel::GetZeroCopyWarningVisibility)
+            .ColorAndOpacity(FSlateColor(FLinearColor::Yellow))
+            .AutoWrapText(true)
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
@@ -1211,6 +1310,7 @@ UOmniCaptureSubsystem* SOmniCaptureControlPanel::GetSubsystem() const
 
 EActiveTimerReturnType SOmniCaptureControlPanel::HandleActiveTimer(double InCurrentTime, float InDeltaTime)
 {
+    RefreshFeatureAvailability();
     RefreshStatus();
     return EActiveTimerReturnType::Continue;
 }
@@ -1339,6 +1439,221 @@ TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateWarningRow(TSharedPtr<FS
             SNew(STextBlock)
             .Text(Item.IsValid() ? FText::FromString(*Item) : FText::GetEmpty())
         ];
+}
+
+void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
+{
+    const double Now = FPlatformTime::Seconds();
+    if (!bForceRefresh && (Now - LastFeatureAvailabilityCheckTime) < 1.0)
+    {
+        return;
+    }
+
+    LastFeatureAvailabilityCheckTime = Now;
+
+    FFeatureAvailabilityState NewState;
+
+    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    const FOmniNVENCCapabilities Caps = FOmniCaptureNVENCEncoder::QueryCapabilities();
+
+    if (Caps.bHardwareAvailable)
+    {
+        NewState.NVENC.bAvailable = true;
+        NewState.NVENC.Reason = FText::Format(LOCTEXT("NVENCAvailableTooltip", "NVENC hardware encoder detected ({0})."), FText::FromString(Caps.AdapterName));
+    }
+    else
+    {
+        NewState.NVENC.bAvailable = false;
+        NewState.NVENC.Reason = LOCTEXT("NVENCUnavailableTooltip", "NVENC hardware encoder unavailable on this GPU or platform.");
+    }
+
+    NewState.NVENCHEVC.bAvailable = Caps.bSupportsHEVC;
+    NewState.NVENCHEVC.Reason = Caps.bSupportsHEVC
+        ? LOCTEXT("HEVCSupportedTooltip", "HEVC encoding is supported by the detected NVENC device.")
+        : LOCTEXT("HEVCUnsupportedTooltip", "This NVENC hardware does not support HEVC encoding.");
+
+    NewState.NVENCNV12.bAvailable = Caps.bSupportsNV12;
+    NewState.NVENCNV12.Reason = Caps.bSupportsNV12
+        ? LOCTEXT("NV12SupportedTooltip", "NV12 input format is supported by NVENC.")
+        : LOCTEXT("NV12UnsupportedTooltip", "NV12 input format is not available on this NVENC hardware.");
+
+    NewState.NVENCP010.bAvailable = Caps.bSupportsP010;
+    NewState.NVENCP010.Reason = Caps.bSupportsP010
+        ? LOCTEXT("P010SupportedTooltip", "10-bit P010 input is supported by NVENC.")
+        : LOCTEXT("P010UnsupportedTooltip", "This NVENC hardware does not support 10-bit P010 input.");
+
+#if PLATFORM_WINDOWS
+    const bool bSupportsZeroCopy = GDynamicRHI && (GDynamicRHI->GetInterfaceType() == ERHIInterfaceType::D3D11 || GDynamicRHI->GetInterfaceType() == ERHIInterfaceType::D3D12);
+    NewState.ZeroCopy.bAvailable = bSupportsZeroCopy;
+    NewState.ZeroCopy.Reason = bSupportsZeroCopy
+        ? LOCTEXT("ZeroCopySupportedTooltip", "Zero-copy NVENC transfers are available on the current Direct3D RHI.")
+        : LOCTEXT("ZeroCopyUnsupportedTooltip", "Zero-copy NVENC requires a Direct3D 11 or 12 RHI.");
+#else
+    NewState.ZeroCopy.bAvailable = false;
+    NewState.ZeroCopy.Reason = LOCTEXT("ZeroCopyUnsupportedPlatformTooltip", "Zero-copy NVENC is not supported on this platform.");
+#endif
+
+    FString ResolvedFFmpeg;
+    const bool bFFmpegAvailable = FOmniCaptureMuxer::IsFFmpegAvailable(Snapshot, &ResolvedFFmpeg);
+    NewState.FFmpeg.bAvailable = bFFmpegAvailable;
+    if (bFFmpegAvailable)
+    {
+        const FText BinaryText = ResolvedFFmpeg.IsEmpty() ? LOCTEXT("FFmpegDefaultBinary", "ffmpeg") : FText::FromString(ResolvedFFmpeg);
+        NewState.FFmpeg.Reason = FText::Format(LOCTEXT("FFmpegAvailableTooltip", "FFmpeg available ({0})."), BinaryText);
+    }
+    else
+    {
+        if (ResolvedFFmpeg.IsEmpty())
+        {
+            NewState.FFmpeg.Reason = LOCTEXT("FFmpegUnavailableTooltip", "FFmpeg binary could not be located. Configure a valid path before enabling FFmpeg metadata.");
+        }
+        else
+        {
+            NewState.FFmpeg.Reason = FText::Format(LOCTEXT("FFmpegMissingTooltip", "FFmpeg binary was not found: {0}"), FText::FromString(ResolvedFFmpeg));
+        }
+    }
+
+    auto ToggleChanged = [](const FFeatureToggleState& A, const FFeatureToggleState& B)
+    {
+        return A.bAvailable != B.bAvailable || !A.Reason.EqualTo(B.Reason);
+    };
+
+    const bool bChanged = ToggleChanged(NewState.NVENC, FeatureAvailability.NVENC)
+        || ToggleChanged(NewState.NVENCHEVC, FeatureAvailability.NVENCHEVC)
+        || ToggleChanged(NewState.NVENCNV12, FeatureAvailability.NVENCNV12)
+        || ToggleChanged(NewState.NVENCP010, FeatureAvailability.NVENCP010)
+        || ToggleChanged(NewState.ZeroCopy, FeatureAvailability.ZeroCopy)
+        || ToggleChanged(NewState.FFmpeg, FeatureAvailability.FFmpeg);
+
+    FeatureAvailability = NewState;
+
+    if (bChanged)
+    {
+        if (OutputFormatCombo.IsValid())
+        {
+            OutputFormatCombo->RefreshOptions();
+        }
+        if (CodecCombo.IsValid())
+        {
+            CodecCombo->RefreshOptions();
+        }
+        if (ColorFormatCombo.IsValid())
+        {
+            ColorFormatCombo->RefreshOptions();
+        }
+    }
+}
+
+bool SOmniCaptureControlPanel::IsOutputFormatSelectable(EOmniOutputFormat Format) const
+{
+    if (Format == EOmniOutputFormat::NVENCHardware)
+    {
+        return FeatureAvailability.NVENC.bAvailable;
+    }
+    return true;
+}
+
+FText SOmniCaptureControlPanel::GetOutputFormatTooltip(EOmniOutputFormat Format) const
+{
+    if (Format == EOmniOutputFormat::NVENCHardware && !FeatureAvailability.NVENC.bAvailable)
+    {
+        return FeatureAvailability.NVENC.Reason;
+    }
+    return LOCTEXT("OutputFormatTooltip", "Choose the capture output format.");
+}
+
+FText SOmniCaptureControlPanel::GetNVENCWarningText() const
+{
+    return FeatureAvailability.NVENC.bAvailable ? FText::GetEmpty() : FeatureAvailability.NVENC.Reason;
+}
+
+EVisibility SOmniCaptureControlPanel::GetNVENCWarningVisibility() const
+{
+    return FeatureAvailability.NVENC.bAvailable ? EVisibility::Collapsed : EVisibility::Visible;
+}
+
+bool SOmniCaptureControlPanel::IsCodecSelectable(EOmniCaptureCodec Codec) const
+{
+    if (Codec == EOmniCaptureCodec::HEVC)
+    {
+        return FeatureAvailability.NVENCHEVC.bAvailable;
+    }
+    return true;
+}
+
+FText SOmniCaptureControlPanel::GetCodecTooltip(EOmniCaptureCodec Codec) const
+{
+    if (Codec == EOmniCaptureCodec::HEVC && !FeatureAvailability.NVENCHEVC.bAvailable)
+    {
+        return FeatureAvailability.NVENCHEVC.Reason;
+    }
+    return LOCTEXT("CodecTooltipDefault", "Select the NVENC video codec.");
+}
+
+bool SOmniCaptureControlPanel::IsColorFormatSelectable(EOmniCaptureColorFormat Format) const
+{
+    switch (Format)
+    {
+    case EOmniCaptureColorFormat::NV12:
+        return FeatureAvailability.NVENCNV12.bAvailable;
+    case EOmniCaptureColorFormat::P010:
+        return FeatureAvailability.NVENCP010.bAvailable;
+    default:
+        return true;
+    }
+}
+
+FText SOmniCaptureControlPanel::GetColorFormatTooltip(EOmniCaptureColorFormat Format) const
+{
+    switch (Format)
+    {
+    case EOmniCaptureColorFormat::NV12:
+        return FeatureAvailability.NVENCNV12.bAvailable ? LOCTEXT("ColorFormatNV12Tooltip", "NV12 8-bit input for NVENC.") : FeatureAvailability.NVENCNV12.Reason;
+    case EOmniCaptureColorFormat::P010:
+        return FeatureAvailability.NVENCP010.bAvailable ? LOCTEXT("ColorFormatP010Tooltip", "10-bit P010 input for NVENC.") : FeatureAvailability.NVENCP010.Reason;
+    default:
+        return LOCTEXT("ColorFormatBGRATooltip", "BGRA fallback input for NVENC.");
+    }
+}
+
+FText SOmniCaptureControlPanel::GetZeroCopyTooltip() const
+{
+    return FeatureAvailability.ZeroCopy.bAvailable ? LOCTEXT("ZeroCopyTooltipDefault", "Avoid GPU to NVENC copies by enabling zero-copy transfers.") : FeatureAvailability.ZeroCopy.Reason;
+}
+
+FText SOmniCaptureControlPanel::GetZeroCopyWarningText() const
+{
+    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    if (Snapshot.OutputFormat != EOmniOutputFormat::NVENCHardware)
+    {
+        return FText::GetEmpty();
+    }
+    return FeatureAvailability.ZeroCopy.bAvailable ? FText::GetEmpty() : FeatureAvailability.ZeroCopy.Reason;
+}
+
+EVisibility SOmniCaptureControlPanel::GetZeroCopyWarningVisibility() const
+{
+    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    if (Snapshot.OutputFormat != EOmniOutputFormat::NVENCHardware)
+    {
+        return EVisibility::Collapsed;
+    }
+    return FeatureAvailability.ZeroCopy.bAvailable ? EVisibility::Collapsed : EVisibility::Visible;
+}
+
+FText SOmniCaptureControlPanel::GetFFmpegMetadataTooltip() const
+{
+    return FeatureAvailability.FFmpeg.bAvailable ? LOCTEXT("FFmpegMetadataTooltip", "Inject spherical metadata during FFmpeg muxing.") : FeatureAvailability.FFmpeg.Reason;
+}
+
+FText SOmniCaptureControlPanel::GetFFmpegWarningText() const
+{
+    return FeatureAvailability.FFmpeg.bAvailable ? FText::GetEmpty() : FeatureAvailability.FFmpeg.Reason;
+}
+
+EVisibility SOmniCaptureControlPanel::GetFFmpegWarningVisibility() const
+{
+    return FeatureAvailability.FFmpeg.bAvailable ? EVisibility::Collapsed : EVisibility::Visible;
 }
 
 void SOmniCaptureControlPanel::UpdateOutputDirectoryDisplay()
@@ -1872,7 +2187,12 @@ void SOmniCaptureControlPanel::HandleOutputFormatChanged(TEnumOptionPtr<EOmniOut
 {
     if (NewFormat.IsValid())
     {
-        ApplyOutputFormat(static_cast<EOmniOutputFormat>(NewFormat->GetValue()));
+        const EOmniOutputFormat Format = static_cast<EOmniOutputFormat>(NewFormat->GetValue());
+        if (!IsOutputFormatSelectable(Format))
+        {
+            return;
+        }
+        ApplyOutputFormat(Format);
     }
 }
 
@@ -1880,7 +2200,12 @@ void SOmniCaptureControlPanel::HandleCodecChanged(TEnumOptionPtr<EOmniCaptureCod
 {
     if (NewCodec.IsValid())
     {
-        ApplyCodec(static_cast<EOmniCaptureCodec>(NewCodec->GetValue()));
+        const EOmniCaptureCodec Codec = static_cast<EOmniCaptureCodec>(NewCodec->GetValue());
+        if (!IsCodecSelectable(Codec))
+        {
+            return;
+        }
+        ApplyCodec(Codec);
     }
 }
 
@@ -1888,7 +2213,12 @@ void SOmniCaptureControlPanel::HandleColorFormatChanged(TEnumOptionPtr<EOmniCapt
 {
     if (NewFormat.IsValid())
     {
-        ApplyColorFormat(static_cast<EOmniCaptureColorFormat>(NewFormat->GetValue()));
+        const EOmniCaptureColorFormat Format = static_cast<EOmniCaptureColorFormat>(NewFormat->GetValue());
+        if (!IsColorFormatSelectable(Format))
+        {
+            return;
+        }
+        ApplyColorFormat(Format);
     }
 }
 
