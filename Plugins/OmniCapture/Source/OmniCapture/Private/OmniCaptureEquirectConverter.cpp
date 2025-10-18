@@ -1,6 +1,7 @@
 #include "OmniCaptureEquirectConverter.h"
 
 #include "Engine/TextureRenderTarget2D.h"
+#include "Engine/TextureRenderTarget.h"
 #include "OmniCaptureTypes.h"
 
 #include "GlobalShader.h"
