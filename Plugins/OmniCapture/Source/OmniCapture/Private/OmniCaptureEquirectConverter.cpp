@@ -6,6 +6,8 @@
 #include "Rendering/TextureRenderTargetResource.h"
 #elif __has_include("Engine/TextureRenderTargetResource.h")
 #include "Engine/TextureRenderTargetResource.h"
+#elif __has_include("Runtime/Engine/Public/TextureRenderTargetResource.h")
+#include "Runtime/Engine/Public/TextureRenderTargetResource.h"
 #else
 #include "TextureRenderTargetResource.h"
 #endif
