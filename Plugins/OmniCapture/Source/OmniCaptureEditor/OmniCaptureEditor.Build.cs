@@ -4,7 +4,7 @@ public class OmniCaptureEditor : ModuleRules
 {
     public OmniCaptureEditor(ReadOnlyTargetRules Target) : base(Target)
     {
-        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+        PCHUsage = PCHUsageMode.NoPCH;
 
         PublicDependencyModuleNames.AddRange(new string[]
         {
@@ -14,19 +14,19 @@ public class OmniCaptureEditor : ModuleRules
             "Slate",
             "SlateCore",
             "UMG",
-            "OmniCapture"  // Ö÷Ä£¿éÒÀÀµ
+            "OmniCapture"  // ä¸»æ¨¡å—ä¾èµ–
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]
         {
             "InputCore",
             "EditorStyle",
-            "LevelEditor",         // ±à¼­Æ÷ºËĞÄ¹¦ÄÜ
+            "LevelEditor",         // ç¼–è¾‘å™¨æ ¸å¿ƒåŠŸèƒ½
             "Projects",
-            "PropertyEditor",      // ÓÃÓÚ×Ô¶¨ÒåÊôĞÔ±à¼­
-            "ToolMenus",           // ÓÃÓÚ´´½¨×Ô¶¨Òå¹¤¾ßÀ¸
-            "UnrealEd",            // ±à¼­Æ÷ºËĞÄ¹¦ÄÜ
-            "DesktopPlatform"      // ÓÃÓÚÊä³öÄ¿Â¼Ñ¡Ôñ¶Ô»°¿ò
+            "PropertyEditor",      // ç”¨äºè‡ªå®šä¹‰å±æ€§ç¼–è¾‘
+            "ToolMenus",           // ç”¨äºåˆ›å»ºè‡ªå®šä¹‰å·¥å…·æ 
+            "UnrealEd",            // ç¼–è¾‘å™¨æ ¸å¿ƒåŠŸèƒ½
+            "DesktopPlatform"      // ç”¨äºè¾“å‡ºç›®å½•é€‰æ‹©å¯¹è¯æ¡†
         });
     }
 }
