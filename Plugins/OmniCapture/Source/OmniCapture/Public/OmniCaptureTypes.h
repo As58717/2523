@@ -5,9 +5,8 @@
 #include "ImageWriteTypes.h"
 #include "Misc/EngineVersionComparison.h"
 #include "ImagePixelData.h"
-#include "OmniCaptureTypes.generated.h"
-
 #include "RenderGraphResources.h"
+#include "OmniCaptureTypes.generated.h"
 
 UENUM(BlueprintType)
 enum class EOmniCaptureMode : uint8 { Mono, Stereo };
