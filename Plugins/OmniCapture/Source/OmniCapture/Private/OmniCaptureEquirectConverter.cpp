@@ -2,13 +2,6 @@
 
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/TextureRenderTarget.h"
-#if __has_include("Rendering/TextureRenderTargetResource.h")
-#include "Rendering/TextureRenderTargetResource.h"
-#elif __has_include("TextureRenderTargetResource.h")
-#include "TextureRenderTargetResource.h"
-#else
-#include "Engine/TextureRenderTargetResource.h"
-#endif
 #include "OmniCaptureTypes.h"
 
 #include "GlobalShader.h"
@@ -172,7 +165,7 @@ namespace
             return false;
         }
 
-        FTextureRenderTargetResource* Resource = RenderTarget->GameThread_GetRenderTargetResource();
+        FTextureRenderTarget2DResource* Resource = static_cast<FTextureRenderTarget2DResource*>(RenderTarget->GameThread_GetRenderTargetResource());
         if (!Resource)
         {
             return false;
@@ -886,7 +879,7 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
     {
         if (UTextureRenderTarget2D* LeftTarget = LeftEye.Faces[FaceIndex].RenderTarget)
         {
-            if (FTextureRenderTargetResource* Resource = LeftTarget->GameThread_GetRenderTargetResource())
+            if (FTextureRenderTarget2DResource* Resource = static_cast<FTextureRenderTarget2DResource*>(LeftTarget->GameThread_GetRenderTargetResource()))
             {
                 LeftFaces.Add(Resource->GetRenderTargetTexture()->GetTexture2D());
             }
@@ -896,7 +889,7 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
         {
             if (UTextureRenderTarget2D* RightTarget = RightEye.Faces[FaceIndex].RenderTarget)
             {
-                if (FTextureRenderTargetResource* Resource = RightTarget->GameThread_GetRenderTargetResource())
+                if (FTextureRenderTarget2DResource* Resource = static_cast<FTextureRenderTarget2DResource*>(RightTarget->GameThread_GetRenderTargetResource()))
                 {
                     RightFaces.Add(Resource->GetRenderTargetTexture()->GetTexture2D());
                 }
@@ -962,7 +955,7 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToPlanar(const 
         return Result;
     }
 
-    FTextureRenderTargetResource* Resource = RenderTarget->GameThread_GetRenderTargetResource();
+    FTextureRenderTarget2DResource* Resource = static_cast<FTextureRenderTarget2DResource*>(RenderTarget->GameThread_GetRenderTargetResource());
     if (!Resource)
     {
         return Result;
