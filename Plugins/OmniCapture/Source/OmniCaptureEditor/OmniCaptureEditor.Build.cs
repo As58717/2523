@@ -4,7 +4,7 @@ public class OmniCaptureEditor : ModuleRules
 {
     public OmniCaptureEditor(ReadOnlyTargetRules Target) : base(Target)
     {
-        PCHUsage = PCHUsageMode.NoPCH;
+        PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
         PublicDependencyModuleNames.AddRange(new string[]
         {

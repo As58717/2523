@@ -5,7 +5,7 @@ public class OmniCapture : ModuleRules
 {
     public OmniCapture(ReadOnlyTargetRules Target) : base(Target)
     {
-        PCHUsage = ModuleRules.PCHUsageMode.NoPCH;
+        PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
         bUseUnity = false;
 
         PublicDependencyModuleNames.AddRange(new string[]
