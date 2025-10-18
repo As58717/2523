@@ -4,6 +4,12 @@
 #include "Engine/TextureRenderTarget.h"
 #if __has_include("Rendering/TextureRenderTargetResource.h")
 #include "Rendering/TextureRenderTargetResource.h"
+#elif __has_include("RenderResource/TextureRenderTargetResource.h")
+#include "RenderResource/TextureRenderTargetResource.h"
+#elif __has_include("RenderGraphResources/TextureRenderTargetResource.h")
+#include "RenderGraphResources/TextureRenderTargetResource.h"
+#elif __has_include("TextureRenderTargetResource.h")
+#include "TextureRenderTargetResource.h"
 #else
 #include "Engine/TextureRenderTargetResource.h"
 #endif
