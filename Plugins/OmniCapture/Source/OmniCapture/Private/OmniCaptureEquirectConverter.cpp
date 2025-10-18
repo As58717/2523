@@ -2,11 +2,7 @@
 
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/TextureRenderTarget.h"
-#if __has_include("Engine/TextureRenderTargetResource.h")
 #include "Engine/TextureRenderTargetResource.h"
-#elif __has_include("Rendering/TextureRenderTargetResource.h")
-#include "Rendering/TextureRenderTargetResource.h"
-#endif
 #include "OmniCaptureTypes.h"
 
 #include "GlobalShader.h"
