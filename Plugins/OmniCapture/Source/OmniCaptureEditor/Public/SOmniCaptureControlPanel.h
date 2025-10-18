@@ -38,6 +38,22 @@ public:
     void Construct(const FArguments& InArgs);
 
 private:
+    struct FFeatureToggleState
+    {
+        bool bAvailable = true;
+        FText Reason;
+    };
+
+    struct FFeatureAvailabilityState
+    {
+        FFeatureToggleState NVENC;
+        FFeatureToggleState NVENCHEVC;
+        FFeatureToggleState NVENCNV12;
+        FFeatureToggleState NVENCP010;
+        FFeatureToggleState ZeroCopy;
+        FFeatureToggleState FFmpeg;
+    };
+
     enum class EMetadataToggle : uint8
     {
         Manifest,
@@ -143,6 +159,22 @@ private:
     void RebuildWarningList(const TArray<FString>& Warnings);
     TSharedRef<ITableRow> GenerateWarningRow(TSharedPtr<FString> Item, const TSharedRef<STableViewBase>& OwnerTable);
 
+    void RefreshFeatureAvailability(bool bForceRefresh = false);
+    bool IsOutputFormatSelectable(EOmniOutputFormat Format) const;
+    FText GetOutputFormatTooltip(EOmniOutputFormat Format) const;
+    FText GetNVENCWarningText() const;
+    EVisibility GetNVENCWarningVisibility() const;
+    bool IsCodecSelectable(EOmniCaptureCodec Codec) const;
+    FText GetCodecTooltip(EOmniCaptureCodec Codec) const;
+    bool IsColorFormatSelectable(EOmniCaptureColorFormat Format) const;
+    FText GetColorFormatTooltip(EOmniCaptureColorFormat Format) const;
+    FText GetZeroCopyTooltip() const;
+    FText GetZeroCopyWarningText() const;
+    EVisibility GetZeroCopyWarningVisibility() const;
+    FText GetFFmpegMetadataTooltip() const;
+    FText GetFFmpegWarningText() const;
+    EVisibility GetFFmpegWarningVisibility() const;
+
 private:
     TWeakObjectPtr<UOmniCaptureEditorSettings> SettingsObject;
     TSharedPtr<IDetailsView> SettingsView;
@@ -174,4 +206,7 @@ private:
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureColorFormat>>> ColorFormatCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureProjection>>> ProjectionCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureImageFormat>>> ImageFormatCombo;
+
+    FFeatureAvailabilityState FeatureAvailability;
+    double LastFeatureAvailabilityCheckTime = 0.0;
 };
