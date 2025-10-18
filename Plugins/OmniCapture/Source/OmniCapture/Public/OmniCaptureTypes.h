@@ -7,6 +7,8 @@
 #include "ImagePixelData.h"
 #include "OmniCaptureTypes.generated.h"
 
+#include "RenderGraphResources.h"
+
 UENUM(BlueprintType)
 enum class EOmniCaptureMode : uint8 { Mono, Stereo };
 

@@ -2,6 +2,7 @@
 
 #include "AudioMixerBlueprintLibrary.h"
 #include "AudioDevice.h"
+#include "Engine/World.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "Sound/SoundWave.h"
