@@ -6,7 +6,7 @@
 #include "Engine/Texture2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
-#include "Rendering/Texture2DResource.h"
+#include "OmniCaptureIncludeFixes.h"
 
 namespace
 {
