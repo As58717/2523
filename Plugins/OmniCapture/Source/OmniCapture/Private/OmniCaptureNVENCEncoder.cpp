@@ -2,6 +2,7 @@
 
 #include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformMisc.h"
+#include "Misc/EngineVersionComparison.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "OmniCaptureTypes.h"
