@@ -29,7 +29,8 @@ public class OmniCaptureEditor : ModuleRules
             "ToolMenus",           // 用于创建自定义工具栏
             "UnrealEd",            // 编辑器核心功能
             "DesktopPlatform",     // 用于输出目录选择对话框
-            "RHI"
+            "RHI",
+            "RHICore"
         });
     }
 }
