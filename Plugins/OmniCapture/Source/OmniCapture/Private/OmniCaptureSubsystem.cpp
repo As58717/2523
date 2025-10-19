@@ -788,12 +788,31 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
             bResult = false;
         }
 
-        const EPixelFormat PixelFormat =
-            (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::NV12) ? PF_NV12 :
-            (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::P010) ? PF_P010 :
-            PF_B8G8R8A8;
+        bool bCanQueryPixelFormat = true;
+        EPixelFormat PixelFormat = PF_B8G8R8A8;
 
-        if (!GPixelFormats[PixelFormat].Supported)
+        if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::NV12)
+        {
+#if defined(PF_NV12)
+            PixelFormat = PF_NV12;
+#else
+            bCanQueryPixelFormat = false;
+            ActiveWarnings.Add(TEXT("NV12 NVENC path unsupported by this engine build"));
+            bResult = false;
+#endif
+        }
+        else if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::P010)
+        {
+#if defined(PF_P010)
+            PixelFormat = PF_P010;
+#else
+            bCanQueryPixelFormat = false;
+            ActiveWarnings.Add(TEXT("P010 / Main10 NVENC path unavailable on this engine build"));
+            bResult = false;
+#endif
+        }
+
+        if (bCanQueryPixelFormat && !GPixelFormats[PixelFormat].Supported)
         {
             ActiveWarnings.Add(TEXT("Requested NVENC pixel format is not supported by the active RHI"));
             bResult = false;
