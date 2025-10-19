@@ -14,8 +14,12 @@
     #include "Rendering/TextureRenderTargetResource.h"
 #elif __has_include("Engine/TextureRenderTargetResource.h")
     #include "Engine/TextureRenderTargetResource.h"
+#elif __has_include("Engine/TextureRenderTarget.h")
+    #include "Engine/TextureRenderTarget.h"
 #elif __has_include("TextureRenderTargetResource.h")
     #include "TextureRenderTargetResource.h"
+#elif __has_include("TextureRenderTarget.h")
+    #include "TextureRenderTarget.h"
 #else
     class FTextureRenderTargetResource;
 #endif
