@@ -35,6 +35,7 @@ public:
     static bool IsNVENCAvailable();
     static FOmniNVENCCapabilities QueryCapabilities();
     static bool SupportsColorFormat(EOmniCaptureColorFormat Format);
+    static bool SupportsZeroCopyRHI();
 
     bool IsInitialized() const { return bInitialized; }
     FString GetOutputFilePath() const { return OutputFilePath; }
