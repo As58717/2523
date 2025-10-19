@@ -127,6 +127,17 @@ bool FOmniCaptureNVENCEncoder::SupportsColorFormat(EOmniCaptureColorFormat Forma
 #endif
 }
 
+bool FOmniCaptureNVENCEncoder::SupportsZeroCopyRHI()
+{
+#if PLATFORM_WINDOWS
+    return GDynamicRHI &&
+        (GDynamicRHI->GetInterfaceType() == ERHIInterfaceType::D3D11 ||
+         GDynamicRHI->GetInterfaceType() == ERHIInterfaceType::D3D12);
+#else
+    return false;
+#endif
+}
+
 FOmniCaptureNVENCEncoder::~FOmniCaptureNVENCEncoder()
 {
     Finalize();

@@ -1483,7 +1483,7 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
         : LOCTEXT("P010UnsupportedTooltip", "This NVENC hardware does not support 10-bit P010 input.");
 
 #if PLATFORM_WINDOWS
-    const bool bSupportsZeroCopy = GDynamicRHI && (GDynamicRHI->GetInterfaceType() == ERHIInterfaceType::D3D11 || GDynamicRHI->GetInterfaceType() == ERHIInterfaceType::D3D12);
+    const bool bSupportsZeroCopy = FOmniCaptureNVENCEncoder::SupportsZeroCopyRHI();
     NewState.ZeroCopy.bAvailable = bSupportsZeroCopy;
     NewState.ZeroCopy.Reason = bSupportsZeroCopy
         ? LOCTEXT("ZeroCopySupportedTooltip", "Zero-copy NVENC transfers are available on the current Direct3D RHI.")
