@@ -2,7 +2,7 @@
 
 #include "Components/SceneComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
-#include "Engine/TextureRenderTarget2D.h"
+#include "OmniCaptureIncludeFixes.h"
 #include "UObject/Package.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "OmniCaptureTypes.h"  // 增加头文件
