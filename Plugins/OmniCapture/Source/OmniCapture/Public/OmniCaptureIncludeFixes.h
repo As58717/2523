@@ -23,3 +23,18 @@
 #else
     class FTextureRenderTargetResource;
 #endif
+
+// ── FTexture2DResource ────────────────────────────────
+#if __has_include("Rendering/Texture2DResource.h")
+    #include "Rendering/Texture2DResource.h"
+#elif __has_include("Engine/Texture2DResource.h")
+    #include "Engine/Texture2DResource.h"
+#elif __has_include("Rendering/TextureResource.h")
+    #include "Rendering/TextureResource.h"
+#elif __has_include("Texture2DResource.h")
+    #include "Texture2DResource.h"
+#elif __has_include("TextureResource.h")
+    #include "TextureResource.h"
+#else
+    class FTexture2DResource;
+#endif
