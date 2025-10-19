@@ -26,7 +26,8 @@ public class OmniCaptureEditor : ModuleRules
             "PropertyEditor",      // 用于自定义属性编辑
             "ToolMenus",           // 用于创建自定义工具栏
             "UnrealEd",            // 编辑器核心功能
-            "DesktopPlatform"      // 用于输出目录选择对话框
+            "DesktopPlatform",     // 用于输出目录选择对话框
+            "RHI"
         });
     }
 }
