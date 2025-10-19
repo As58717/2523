@@ -1,5 +1,4 @@
 ﻿using UnrealBuildTool;
-using System.IO;
 
 public class OmniCapture : ModuleRules
 {
@@ -27,16 +26,21 @@ public class OmniCapture : ModuleRules
         PrivateDependencyModuleNames.AddRange(new string[]
         {
             "ApplicationCore",
-            "CinematicCamera",
-            "InputCore",
-            "HeadMountedDisplay",
-            "AudioMixer",
             "AudioExtensions",
+            "AudioMixer",
+            "CinematicCamera",
             "DeveloperSettings",
+            "HeadMountedDisplay",
             "ImageCore",
             "ImageWrapper",
+            "InputCore",
             "Renderer"
         });
+
+        if (Target.Platform == UnrealTargetPlatform.Win64)
+        {
+            PrivateDependencyModuleNames.Add("D3D12RHI");
+        }
 
         PrivateDefinitions.Add("WITH_OMNI_NVENC=0");
     }

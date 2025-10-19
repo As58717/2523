@@ -5,6 +5,10 @@
 #include "OmniCaptureTypes.h"
 #include "OmniCaptureRigActor.h"
 
+// 公共头只做前置声明，避免路径/版本差异在项目内扩散
+class UTextureRenderTarget2D;
+class FTextureRenderTargetResource;
+
 struct FOmniCaptureEquirectResult
 {
     TUniquePtr<FImagePixelData> PixelData;

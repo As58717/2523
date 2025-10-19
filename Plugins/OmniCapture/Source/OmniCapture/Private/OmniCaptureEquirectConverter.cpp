@@ -1,7 +1,6 @@
 #include "OmniCaptureEquirectConverter.h"
 
-#include "Engine/TextureRenderTarget2D.h"
-#include "Engine/TextureRenderTarget.h"
+#include "OmniCaptureIncludeFixes.h" // 统一兼容：TRT2D + TRTResource
 #include "OmniCaptureTypes.h"
 
 #include "GlobalShader.h"
