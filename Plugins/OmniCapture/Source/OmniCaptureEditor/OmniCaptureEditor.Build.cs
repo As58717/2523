@@ -11,6 +11,8 @@ public class OmniCaptureEditor : ModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+            "RenderCore",
+            "RHI",
             "Slate",
             "SlateCore",
             "UMG",
