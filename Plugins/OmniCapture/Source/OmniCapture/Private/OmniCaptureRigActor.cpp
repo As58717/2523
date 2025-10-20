@@ -31,10 +31,6 @@ void AOmniCaptureRigActor::Configure(const FOmniCaptureSettings& InSettings)
 {
     CachedSettings = InSettings;
 
-    const float IPDHalf = CachedSettings.Mode == EOmniCaptureMode::Stereo
-        ? CachedSettings.InterPupillaryDistanceCm * 0.5f
-        : 0.0f;
-
     // 清除之前的捕获组件
     for (USceneCaptureComponent2D* Capture : LeftEyeCaptures)
     {
@@ -67,12 +63,18 @@ void AOmniCaptureRigActor::Configure(const FOmniCaptureSettings& InSettings)
     const bool bPlanar = CachedSettings.IsPlanar();
     const int32 FaceCount = bPlanar ? 1 : CubemapFaceCount;
 
+    const float IPDHalf = CachedSettings.Mode == EOmniCaptureMode::Stereo
+        ? CachedSettings.InterPupillaryDistanceCm * 0.5f
+        : 0.0f;
+
     BuildEyeRig(EOmniCaptureEye::Left, -IPDHalf, FaceCount);
 
     if (CachedSettings.Mode == EOmniCaptureMode::Stereo)
     {
         BuildEyeRig(EOmniCaptureEye::Right, IPDHalf, FaceCount);
     }
+
+    ApplyStereoParameters();
 }
 
 void AOmniCaptureRigActor::Capture(FOmniEyeCapture& OutLeftEye, FOmniEyeCapture& OutRightEye) const
@@ -98,8 +100,6 @@ void AOmniCaptureRigActor::BuildEyeRig(EOmniCaptureEye Eye, float IPDHalfCm, int
         return;
     }
 
-    EyeRoot->SetRelativeLocation(FVector(0.0f, IPDHalfCm, 0.0f));
-
     TArray<USceneCaptureComponent2D*>& TargetArray = Eye == EOmniCaptureEye::Left ? LeftEyeCaptures : RightEyeCaptures;
 
     const FIntPoint TargetSize = CachedSettings.IsPlanar()
@@ -123,6 +123,59 @@ void AOmniCaptureRigActor::BuildEyeRig(EOmniCaptureEye Eye, float IPDHalfCm, int
 
         TargetArray.Add(CaptureComponent);
     }
+}
+
+void AOmniCaptureRigActor::UpdateStereoParameters(float NewIPDCm, float NewConvergenceDistanceCm)
+{
+    if (CachedSettings.Mode != EOmniCaptureMode::Stereo)
+    {
+        CachedSettings.InterPupillaryDistanceCm = 0.0f;
+        CachedSettings.EyeConvergenceDistanceCm = 0.0f;
+        ApplyStereoParameters();
+        return;
+    }
+
+    CachedSettings.InterPupillaryDistanceCm = FMath::Max(0.0f, NewIPDCm);
+    CachedSettings.EyeConvergenceDistanceCm = FMath::Max(0.0f, NewConvergenceDistanceCm);
+    ApplyStereoParameters();
+}
+
+void AOmniCaptureRigActor::ApplyStereoParameters()
+{
+    const float HalfIPD = CachedSettings.Mode == EOmniCaptureMode::Stereo
+        ? CachedSettings.InterPupillaryDistanceCm * 0.5f
+        : 0.0f;
+
+    UpdateEyeRootTransform(LeftEyeRoot, -HalfIPD, EOmniCaptureEye::Left);
+    UpdateEyeRootTransform(RightEyeRoot, HalfIPD, EOmniCaptureEye::Right);
+}
+
+void AOmniCaptureRigActor::UpdateEyeRootTransform(USceneComponent* EyeRoot, float LateralOffset, EOmniCaptureEye Eye) const
+{
+    if (!EyeRoot)
+    {
+        return;
+    }
+
+    EyeRoot->SetRelativeLocation(FVector(0.0f, LateralOffset, 0.0f));
+
+    if (!CachedSettings.IsPlanar())
+    {
+        EyeRoot->SetRelativeRotation(FRotator::ZeroRotator);
+        return;
+    }
+
+    const float ConvergenceDistance = CachedSettings.EyeConvergenceDistanceCm;
+    if (ConvergenceDistance <= KINDA_SMALL_NUMBER)
+    {
+        EyeRoot->SetRelativeRotation(FRotator::ZeroRotator);
+        return;
+    }
+
+    const FVector EyeLocation(0.0f, LateralOffset, 0.0f);
+    const FVector FocusPoint(ConvergenceDistance, 0.0f, 0.0f);
+    const FRotator EyeRotation = UKismetMathLibrary::FindLookAtRotation(EyeLocation, FocusPoint);
+    EyeRoot->SetRelativeRotation(EyeRotation);
 }
 
 void AOmniCaptureRigActor::ConfigureCaptureComponent(USceneCaptureComponent2D* CaptureComponent, const FIntPoint& TargetSize) const

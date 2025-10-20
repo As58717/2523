@@ -10,12 +10,14 @@
 #include "OmniCapturePreviewActor.h"
 #include "OmniCaptureMuxer.h"
 
+#include "Curves/CurveFloat.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Misc/Paths.h"
 #include "Misc/DateTime.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFile.h"
+#include "HAL/IConsoleManager.h"
 #include "RenderingThread.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
@@ -109,18 +111,34 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
         return;
     }
 
+    DynamicParameterStartTime = FPlatformTime::Seconds();
+    LastDynamicInterPupillaryDistance = ActiveSettings.InterPupillaryDistanceCm;
+    LastDynamicConvergence = ActiveSettings.EyeConvergenceDistanceCm;
+
+    ApplyRenderFeatureOverrides();
+
     CreateRig();
     if (!RigActor.IsValid())
     {
         UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Failed to create capture rig"));
+        RestoreRenderFeatureOverrides();
+        DynamicParameterStartTime = 0.0;
+        LastDynamicInterPupillaryDistance = -1.0f;
+        LastDynamicConvergence = -1.0f;
         return;
     }
+
+    UpdateDynamicStereoParameters();
 
     CreateTickActor();
     if (!TickActor.IsValid())
     {
         UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Failed to create tick actor"));
         DestroyRig();
+        RestoreRenderFeatureOverrides();
+        DynamicParameterStartTime = 0.0;
+        LastDynamicInterPupillaryDistance = -1.0f;
+        LastDynamicConvergence = -1.0f;
         return;
     }
 
@@ -232,6 +250,11 @@ void UOmniCaptureSubsystem::EndCapture(bool bFinalize)
     bIsCapturing = false;
     bIsPaused = false;
     State = EOmniCaptureState::Finalizing;
+
+    RestoreRenderFeatureOverrides();
+    DynamicParameterStartTime = 0.0;
+    LastDynamicInterPupillaryDistance = -1.0f;
+    LastDynamicConvergence = -1.0f;
 
     DestroyTickActor();
     DestroyPreviewActor();
@@ -986,6 +1009,7 @@ void UOmniCaptureSubsystem::TickCapture(float DeltaTime)
 
     if (!bIsPaused)
     {
+        UpdateDynamicStereoParameters();
         RotateSegmentIfNeeded();
         CaptureFrame();
     }
@@ -1098,6 +1122,118 @@ void UOmniCaptureSubsystem::FlushRingBuffer()
     {
         RingBuffer->Flush();
     }
+}
+
+void UOmniCaptureSubsystem::UpdateDynamicStereoParameters()
+{
+    if (!RigActor.IsValid())
+    {
+        return;
+    }
+
+    float TargetIPD = ActiveSettings.InterPupillaryDistanceCm;
+    float TargetConvergence = ActiveSettings.EyeConvergenceDistanceCm;
+
+    const double Now = FPlatformTime::Seconds();
+    const float ElapsedSeconds = static_cast<float>(Now - DynamicParameterStartTime);
+
+    if (ActiveSettings.InterpupillaryDistanceCurve)
+    {
+        TargetIPD = FMath::Max(0.0f, ActiveSettings.InterpupillaryDistanceCurve->GetFloatValue(ElapsedSeconds));
+    }
+
+    if (ActiveSettings.EyeConvergenceCurve)
+    {
+        TargetConvergence = FMath::Max(0.0f, ActiveSettings.EyeConvergenceCurve->GetFloatValue(ElapsedSeconds));
+    }
+
+    if (!FMath::IsNearlyEqual(TargetIPD, LastDynamicInterPupillaryDistance) || !FMath::IsNearlyEqual(TargetConvergence, LastDynamicConvergence))
+    {
+        if (AOmniCaptureRigActor* Rig = RigActor.Get())
+        {
+            Rig->UpdateStereoParameters(TargetIPD, TargetConvergence);
+        }
+
+        LastDynamicInterPupillaryDistance = TargetIPD;
+        LastDynamicConvergence = TargetConvergence;
+        ActiveSettings.InterPupillaryDistanceCm = TargetIPD;
+        ActiveSettings.EyeConvergenceDistanceCm = TargetConvergence;
+    }
+}
+
+void UOmniCaptureSubsystem::ApplyRenderFeatureOverrides()
+{
+    const FOmniCaptureRenderFeatureOverrides& Overrides = ActiveSettings.RenderingOverrides;
+
+    ConsoleOverrideRecords.Reset();
+    bRenderOverridesApplied = false;
+
+    auto ApplyStringOverride = [this](bool bShouldApply, const TCHAR* Name, const TCHAR* Value)
+    {
+        if (!bShouldApply)
+        {
+            return;
+        }
+
+        if (IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(Name))
+        {
+            FConsoleVariableOverrideRecord Record;
+            Record.Variable = Var;
+            Record.PreviousValue = Var->GetString();
+            ConsoleOverrideRecords.Add(Record);
+            Var->Set(Value, ECVF_SetByCode);
+        }
+    };
+
+    auto ApplyNumericOverride = [this](bool bShouldApply, const TCHAR* Name, int32 Value)
+    {
+        if (!bShouldApply)
+        {
+            return;
+        }
+
+        if (IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(Name))
+        {
+            FConsoleVariableOverrideRecord Record;
+            Record.Variable = Var;
+            Record.PreviousValue = Var->GetString();
+            ConsoleOverrideRecords.Add(Record);
+            Var->Set(Value, ECVF_SetByCode);
+        }
+    };
+
+    ApplyStringOverride(Overrides.bForceRayTracing, TEXT("r.RayTracing.Force"), TEXT("1"));
+    ApplyStringOverride(Overrides.bForcePathTracing, TEXT("r.PathTracing"), TEXT("1"));
+    ApplyStringOverride(Overrides.bForcePathTracing, TEXT("r.PathTracing.Enable"), TEXT("1"));
+    ApplyStringOverride(Overrides.bForceLumen, TEXT("r.Lumen.HardwareRayTracing"), TEXT("1"));
+    ApplyStringOverride(Overrides.bForceLumen, TEXT("r.Lumen.ScreenProbeGather"), TEXT("1"));
+    ApplyStringOverride(Overrides.bEnableDLSS, TEXT("r.NGX.DLSS.Enable"), TEXT("1"));
+    ApplyNumericOverride(Overrides.bEnableBloom, TEXT("r.DefaultFeature.Bloom"), 1);
+    ApplyNumericOverride(Overrides.bEnableBloom, TEXT("r.BloomQuality"), 5);
+    ApplyNumericOverride(Overrides.bEnableAntiAliasing, TEXT("r.DefaultFeature.AntiAliasing"), 2);
+    ApplyNumericOverride(Overrides.bEnableAntiAliasing, TEXT("r.AntiAliasingMethod"), 4);
+
+    bRenderOverridesApplied = ConsoleOverrideRecords.Num() > 0;
+}
+
+void UOmniCaptureSubsystem::RestoreRenderFeatureOverrides()
+{
+    if (bRenderOverridesApplied)
+    {
+        for (FConsoleVariableOverrideRecord& Record : ConsoleOverrideRecords)
+        {
+            if (Record.Variable)
+            {
+                Record.Variable->Set(*Record.PreviousValue, ECVF_SetByCode);
+            }
+        }
+    }
+
+    ConsoleOverrideRecords.Reset();
+    bRenderOverridesApplied = false;
+    DynamicParameterStartTime = 0.0;
+    LastDynamicInterPupillaryDistance = -1.0f;
+    LastDynamicConvergence = -1.0f;
 }
 
 void UOmniCaptureSubsystem::HandleDroppedFrame()

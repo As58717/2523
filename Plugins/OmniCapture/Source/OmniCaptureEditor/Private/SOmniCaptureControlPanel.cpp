@@ -80,6 +80,12 @@ namespace
         {
         case EOmniCaptureProjection::Planar2D:
             return LOCTEXT("ProjectionPlanar", "Planar 2D");
+        case EOmniCaptureProjection::Cylindrical:
+            return LOCTEXT("ProjectionCylindrical", "Cylindrical");
+        case EOmniCaptureProjection::FullDome:
+            return LOCTEXT("ProjectionFullDome", "Full Dome");
+        case EOmniCaptureProjection::SphericalMirror:
+            return LOCTEXT("ProjectionSphericalMirror", "Spherical Mirror");
         case EOmniCaptureProjection::Equirectangular:
         default:
             return LOCTEXT("ProjectionEquirect", "Equirectangular");
@@ -94,6 +100,8 @@ namespace
             return LOCTEXT("ImageFormatJPG", "JPEG Sequence");
         case EOmniCaptureImageFormat::EXR:
             return LOCTEXT("ImageFormatEXR", "EXR Sequence");
+        case EOmniCaptureImageFormat::BMP:
+            return LOCTEXT("ImageFormatBMP", "BMP Sequence");
         case EOmniCaptureImageFormat::PNG:
         default:
             return LOCTEXT("ImageFormatPNG", "PNG Sequence");
@@ -177,11 +185,15 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
     ProjectionOptions.Reset();
     ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::Equirectangular));
     ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::Planar2D));
+    ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::Cylindrical));
+    ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::FullDome));
+    ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::SphericalMirror));
 
     ImageFormatOptions.Reset();
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::PNG));
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::JPG));
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::EXR));
+    ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::BMP));
 
     RefreshFeatureAvailability(true);
 

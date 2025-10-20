@@ -42,6 +42,7 @@ public:
 
     void Configure(const FOmniCaptureSettings& InSettings);
     void Capture(FOmniEyeCapture& OutLeftEye, FOmniEyeCapture& OutRightEye) const;
+    void UpdateStereoParameters(float NewIPDCm, float NewConvergenceDistanceCm);
 
     FORCEINLINE const FTransform& GetRigTransform() const { return RigRoot->GetComponentTransform(); }
 
@@ -49,6 +50,8 @@ private:
     void BuildEyeRig(EOmniCaptureEye Eye, float IPDHalfCm, int32 FaceCount);
     void ConfigureCaptureComponent(USceneCaptureComponent2D* CaptureComponent, const FIntPoint& TargetSize) const;
     void CaptureEye(EOmniCaptureEye Eye, FOmniEyeCapture& OutCapture) const;
+    void ApplyStereoParameters();
+    void UpdateEyeRootTransform(USceneComponent* EyeRoot, float LateralOffset, EOmniCaptureEye Eye) const;
 
     static void GetOrientationForFace(int32 FaceIndex, FRotator& OutRotation);
 

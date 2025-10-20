@@ -13,6 +13,7 @@ class AOmniCaptureRigActor;
 class AOmniCaptureDirectorActor;
 class AOmniCapturePreviewActor;
 class UTexture2D;
+class IConsoleVariable;
 
 struct FOmniCaptureSegmentRecord
 {
@@ -115,6 +116,9 @@ private:
     void TickCapture(float DeltaTime);
     void CaptureFrame();
     void FlushRingBuffer();
+    void UpdateDynamicStereoParameters();
+    void ApplyRenderFeatureOverrides();
+    void RestoreRenderFeatureOverrides();
 
     void HandleDroppedFrame();
 
@@ -132,6 +136,12 @@ private:
 
 private:
     friend class AOmniCaptureDirectorActor;
+
+    struct FConsoleVariableOverrideRecord
+    {
+        IConsoleVariable* Variable = nullptr;
+        FString PreviousValue;
+    };
 
     FOmniCaptureSettings ActiveSettings;
     FOmniCaptureSettings OriginalSettings;
@@ -153,6 +163,9 @@ private:
     double LastSegmentSizeCheckTime = 0.0;
     double CurrentSegmentStartTime = 0.0;
     int32 CurrentSegmentIndex = 0;
+    double DynamicParameterStartTime = 0.0;
+    float LastDynamicInterPupillaryDistance = -1.0f;
+    float LastDynamicConvergence = -1.0f;
 
     TWeakObjectPtr<AOmniCaptureRigActor> RigActor;
     TWeakObjectPtr<AOmniCaptureDirectorActor> TickActor;
@@ -178,5 +191,8 @@ private:
     FOmniAudioSyncStats AudioStats;
 
     EOmniCaptureState State = EOmniCaptureState::Idle;
+
+    TArray<FConsoleVariableOverrideRecord> ConsoleOverrideRecords;
+    bool bRenderOverridesApplied = false;
 };
 

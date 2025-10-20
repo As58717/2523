@@ -20,6 +20,8 @@ private:
     bool WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear) const;
     bool WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WritePNGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
+    bool WriteBMP(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
+    bool WriteBMPFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
     bool WriteJPEG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WriteJPEGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
     bool WriteEXR(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;

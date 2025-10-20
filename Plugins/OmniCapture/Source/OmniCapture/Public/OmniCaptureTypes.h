@@ -8,11 +8,20 @@
 #include "RenderGraphResources.h"
 #include "OmniCaptureTypes.generated.h"
 
+class UCurveFloat;
+
 UENUM(BlueprintType)
 enum class EOmniCaptureMode : uint8 { Mono, Stereo };
 
 UENUM(BlueprintType)
-enum class EOmniCaptureProjection : uint8 { Equirectangular, Planar2D };
+enum class EOmniCaptureProjection : uint8
+{
+        Equirectangular,
+        Planar2D,
+        Cylindrical,
+        FullDome,
+        SphericalMirror
+};
 
 UENUM(BlueprintType)
 enum class EOmniCaptureCoverage : uint8 { FullSphere, HalfSphere };
@@ -29,7 +38,7 @@ enum class EOmniOutputFormat : uint8
 };
 
 UENUM(BlueprintType)
-enum class EOmniCaptureImageFormat : uint8 { PNG, JPG, EXR };
+enum class EOmniCaptureImageFormat : uint8 { PNG, JPG, EXR, BMP };
 
 UENUM(BlueprintType)
 enum class EOmniCaptureGamma : uint8 { SRGB, Linear };
@@ -54,6 +63,19 @@ enum class EOmniCaptureRingBufferPolicy : uint8 { DropOldest, BlockProducer };
 
 UENUM(BlueprintType)
 enum class EOmniCapturePreviewView : uint8 { StereoComposite, LeftEye, RightEye };
+
+USTRUCT(BlueprintType)
+struct FOmniCaptureRenderFeatureOverrides
+{
+        GENERATED_BODY()
+
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering") bool bForceRayTracing = false;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering") bool bForcePathTracing = false;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering") bool bForceLumen = false;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering") bool bEnableDLSS = false;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering") bool bEnableBloom = false;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering") bool bEnableAntiAliasing = true;
+};
 
 USTRUCT(BlueprintType)
 struct FOmniCaptureQuality
@@ -86,8 +108,11 @@ struct OMNICAPTURE_API FOmniCaptureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") bool bRecordAudio = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") float AudioGain = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") TSoftObjectPtr<class USoundSubmix> SubmixToRecord;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") float InterPupillaryDistanceCm = 6.4f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, UIMin = 0.0)) float SegmentDurationSeconds = 0.0f;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") float InterPupillaryDistanceCm = 6.4f;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture|Stereo", meta = (ClampMin = 0.0, UIMin = 0.0)) float EyeConvergenceDistanceCm = 0.0f;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture|Stereo") UCurveFloat* InterpupillaryDistanceCurve = nullptr;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture|Stereo") UCurveFloat* EyeConvergenceCurve = nullptr;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, UIMin = 0.0)) float SegmentDurationSeconds = 0.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0)) int32 SegmentSizeLimitMB = 0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") bool bCreateSegmentSubfolders = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniOutputFormat OutputFormat = EOmniOutputFormat::ImageSequence;
@@ -115,6 +140,7 @@ struct OMNICAPTURE_API FOmniCaptureSettings
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bWriteSpatialMetadata = true;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bWriteXMPMetadata = true;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bInjectFFmpegMetadata = true;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering") FOmniCaptureRenderFeatureOverrides RenderingOverrides;
 
         FIntPoint GetEquirectResolution() const;
         FIntPoint GetPlanarResolution() const;
@@ -123,6 +149,9 @@ struct OMNICAPTURE_API FOmniCaptureSettings
         bool IsStereo() const;
         bool IsVR180() const;
         bool IsPlanar() const;
+        bool IsCylindrical() const;
+        bool IsFullDome() const;
+        bool IsSphericalMirror() const;
         FString GetStereoModeMetadataTag() const;
         int32 GetEncoderAlignmentRequirement() const;
         float GetHorizontalFOVDegrees() const;
