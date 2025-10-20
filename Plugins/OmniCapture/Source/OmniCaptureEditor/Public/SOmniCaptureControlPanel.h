@@ -107,6 +107,7 @@ private:
     void ApplyCodec(EOmniCaptureCodec Codec);
     void ApplyColorFormat(EOmniCaptureColorFormat Format);
     void ApplyImageFormat(EOmniCaptureImageFormat Format);
+    void ApplyPNGBitDepth(EOmniCapturePNGBitDepth BitDepth);
     void ApplyMetadataToggle(EMetadataToggle Toggle, bool bEnabled);
 
     ECheckBoxState GetVRModeCheckState(bool bVR180) const;
@@ -120,6 +121,8 @@ private:
     TSharedRef<SWidget> GenerateProjectionOption(TEnumOptionPtr<EOmniCaptureProjection> InValue) const;
     void HandleImageFormatChanged(TEnumOptionPtr<EOmniCaptureImageFormat> NewFormat, ESelectInfo::Type SelectInfo);
     TSharedRef<SWidget> GenerateImageFormatOption(TEnumOptionPtr<EOmniCaptureImageFormat> InValue) const;
+    void HandlePNGBitDepthChanged(TEnumOptionPtr<EOmniCapturePNGBitDepth> NewValue, ESelectInfo::Type SelectInfo);
+    TSharedRef<SWidget> GeneratePNGBitDepthOption(TEnumOptionPtr<EOmniCapturePNGBitDepth> InValue) const;
 
     int32 GetPerEyeWidthValue() const;
     int32 GetPerEyeHeightValue() const;
@@ -145,6 +148,7 @@ private:
     TEnumOptionPtr<EOmniCaptureColorFormat> FindColorFormatOption(EOmniCaptureColorFormat Format) const;
     TEnumOptionPtr<EOmniCaptureProjection> FindProjectionOption(EOmniCaptureProjection Projection) const;
     TEnumOptionPtr<EOmniCaptureImageFormat> FindImageFormatOption(EOmniCaptureImageFormat Format) const;
+    TEnumOptionPtr<EOmniCapturePNGBitDepth> FindPNGBitDepthOption(EOmniCapturePNGBitDepth BitDepth) const;
 
     void HandleOutputFormatChanged(TEnumOptionPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo);
     void HandleCodecChanged(TEnumOptionPtr<EOmniCaptureCodec> NewCodec, ESelectInfo::Type SelectInfo);
@@ -209,6 +213,7 @@ private:
     TArray<TEnumOptionPtr<EOmniCaptureColorFormat>> ColorFormatOptions;
     TArray<TEnumOptionPtr<EOmniCaptureProjection>> ProjectionOptions;
     TArray<TEnumOptionPtr<EOmniCaptureImageFormat>> ImageFormatOptions;
+    TArray<TEnumOptionPtr<EOmniCapturePNGBitDepth>> PNGBitDepthOptions;
 
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureStereoLayout>>> StereoLayoutCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniOutputFormat>>> OutputFormatCombo;
@@ -216,6 +221,7 @@ private:
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureColorFormat>>> ColorFormatCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureProjection>>> ProjectionCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureImageFormat>>> ImageFormatCombo;
+    TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCapturePNGBitDepth>>> PNGBitDepthCombo;
 
     FFeatureAvailabilityState FeatureAvailability;
     double LastFeatureAvailabilityCheckTime = 0.0;

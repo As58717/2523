@@ -44,6 +44,13 @@ UENUM(BlueprintType)
 enum class EOmniCaptureGamma : uint8 { SRGB, Linear };
 
 UENUM(BlueprintType)
+enum class EOmniCapturePNGBitDepth : uint8
+{
+        BitDepth16 UMETA(DisplayName = "16-bit Color"),
+        BitDepth32 UMETA(DisplayName = "32-bit Color")
+};
+
+UENUM(BlueprintType)
 enum class EOmniCaptureColorSpace : uint8 { BT709, BT2020, HDR10 };
 
 UENUM(BlueprintType)
@@ -117,6 +124,7 @@ struct OMNICAPTURE_API FOmniCaptureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") bool bCreateSegmentSubfolders = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniOutputFormat OutputFormat = EOmniOutputFormat::ImageSequence;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniCaptureImageFormat ImageFormat = EOmniCaptureImageFormat::PNG;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniCapturePNGBitDepth PNGBitDepth = EOmniCapturePNGBitDepth::BitDepth32;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") FString OutputDirectory;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") FString OutputFileName = TEXT("OmniCapture");
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniCaptureColorSpace ColorSpace = EOmniCaptureColorSpace::BT709;

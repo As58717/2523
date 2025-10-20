@@ -37,6 +37,7 @@ void FOmniCaptureImageWriter::Initialize(const FOmniCaptureSettings& Settings, c
     OutputDirectory = FPaths::ConvertRelativePathToFull(OutputDirectory);
     IFileManager::Get().MakeDirectory(*OutputDirectory, true);
     TargetFormat = Settings.ImageFormat;
+    TargetPNGBitDepth = Settings.PNGBitDepth;
     bInitialized = true;
 }
 
@@ -155,7 +156,7 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
     return bWriteSuccessful;
 }
 
-bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const
+bool FOmniCaptureImageWriter::WritePNGRaw(const FString& FilePath, const FIntPoint& Size, const void* RawData, int64 RawSizeInBytes, ERGBFormat Format, int32 BitDepth) const
 {
     const TSharedPtr<IImageWrapper> ImageWrapper = CreateImageWrapper(EImageFormat::PNG);
     if (!ImageWrapper.IsValid())
@@ -163,14 +164,7 @@ bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData,
         return false;
     }
 
-    const FIntPoint Size = PixelData.GetSize();
-    const TArray64<FColor>& Pixels = PixelData.Pixels;
-    if (Pixels.Num() != Size.X * Size.Y)
-    {
-        return false;
-    }
-
-    if (!ImageWrapper->SetRaw(reinterpret_cast<const uint8*>(Pixels.GetData()), Pixels.Num() * sizeof(FColor), Size.X, Size.Y, ERGBFormat::BGRA, 8))
+    if (!ImageWrapper->SetRaw(static_cast<const uint8*>(RawData), RawSizeInBytes, Size.X, Size.Y, Format, BitDepth))
     {
         return false;
     }
@@ -183,6 +177,42 @@ bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData,
 
     IFileManager::Get().Delete(*FilePath, false, true, false);
     return FFileHelper::SaveArrayToFile(CompressedData, *FilePath);
+}
+
+bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const
+{
+    const FIntPoint Size = PixelData.GetSize();
+    const TArray64<FColor>& Pixels = PixelData.Pixels;
+    if (Pixels.Num() != Size.X * Size.Y)
+    {
+        return false;
+    }
+
+    if (TargetPNGBitDepth == EOmniCapturePNGBitDepth::BitDepth16)
+    {
+        const int64 PixelCount = Pixels.Num();
+        TArray64<uint16> Expanded;
+        Expanded.SetNum(PixelCount * 4);
+
+        const auto ExpandChannel = [](uint8 Value) -> uint16
+        {
+            return static_cast<uint16>(Value) * 257u;
+        };
+
+        for (int64 Index = 0; Index < PixelCount; ++Index)
+        {
+            const FColor& Pixel = Pixels[Index];
+            const int64 BaseIndex = Index * 4;
+            Expanded[BaseIndex + 0] = ExpandChannel(Pixel.B);
+            Expanded[BaseIndex + 1] = ExpandChannel(Pixel.G);
+            Expanded[BaseIndex + 2] = ExpandChannel(Pixel.R);
+            Expanded[BaseIndex + 3] = ExpandChannel(Pixel.A);
+        }
+
+        return WritePNGRaw(FilePath, Size, Expanded.GetData(), Expanded.Num() * sizeof(uint16), ERGBFormat::BGRA, 16);
+    }
+
+    return WritePNGRaw(FilePath, Size, Pixels.GetData(), Pixels.Num() * sizeof(FColor), ERGBFormat::BGRA, 8);
 }
 
 bool FOmniCaptureImageWriter::WriteBMP(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const
@@ -222,6 +252,30 @@ bool FOmniCaptureImageWriter::WritePNGFromLinear(const TImagePixelData<FFloat16C
     if (PixelData.Pixels.Num() != ExpectedCount)
     {
         return false;
+    }
+
+    if (TargetPNGBitDepth == EOmniCapturePNGBitDepth::BitDepth16)
+    {
+        TArray64<uint16> Expanded;
+        Expanded.SetNum(static_cast<int64>(ExpectedCount) * 4);
+
+        const auto ToUInt16 = [](float Value) -> uint16
+        {
+            const float Clamped = FMath::Clamp(Value, 0.0f, 1.0f);
+            return static_cast<uint16>(FMath::RoundToInt(Clamped * 65535.0f));
+        };
+
+        for (int32 Index = 0; Index < ExpectedCount; ++Index)
+        {
+            const FFloat16Color& Pixel = PixelData.Pixels[Index];
+            const int64 BaseIndex = static_cast<int64>(Index) * 4;
+            Expanded[BaseIndex + 0] = ToUInt16(Pixel.B.GetFloat());
+            Expanded[BaseIndex + 1] = ToUInt16(Pixel.G.GetFloat());
+            Expanded[BaseIndex + 2] = ToUInt16(Pixel.R.GetFloat());
+            Expanded[BaseIndex + 3] = ToUInt16(Pixel.A.GetFloat());
+        }
+
+        return WritePNGRaw(FilePath, Size, Expanded.GetData(), Expanded.Num() * sizeof(uint16), ERGBFormat::BGRA, 16);
     }
 
     TArray<FColor> Converted;

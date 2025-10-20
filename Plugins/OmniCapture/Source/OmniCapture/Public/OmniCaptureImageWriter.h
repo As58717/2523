@@ -18,6 +18,7 @@ public:
 
 private:
     bool WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear) const;
+    bool WritePNGRaw(const FString& FilePath, const FIntPoint& Size, const void* RawData, int64 RawSizeInBytes, ERGBFormat Format, int32 BitDepth) const;
     bool WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WritePNGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
     bool WriteBMP(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
@@ -34,6 +35,7 @@ private:
     FString OutputDirectory;
     FString SequenceBaseName;
     EOmniCaptureImageFormat TargetFormat = EOmniCaptureImageFormat::PNG;
+    EOmniCapturePNGBitDepth TargetPNGBitDepth = EOmniCapturePNGBitDepth::BitDepth32;
 
     TArray<FOmniCaptureFrameMetadata> CapturedMetadata;
     FCriticalSection MetadataCS;

@@ -108,6 +108,18 @@ namespace
         }
     }
 
+    FText PNGBitDepthToText(EOmniCapturePNGBitDepth BitDepth)
+    {
+        switch (BitDepth)
+        {
+        case EOmniCapturePNGBitDepth::BitDepth16:
+            return LOCTEXT("PNGBitDepth16", "16-bit Color");
+        case EOmniCapturePNGBitDepth::BitDepth32:
+        default:
+            return LOCTEXT("PNGBitDepth32", "32-bit Color");
+        }
+    }
+
     int32 AlignDimensionUI(int32 Value, int32 Alignment)
     {
         const int32 SafeValue = FMath::Max(1, Value);
@@ -194,6 +206,10 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::JPG));
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::EXR));
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::BMP));
+
+    PNGBitDepthOptions.Reset();
+    PNGBitDepthOptions.Add(MakeShared<TEnumOptionValue<EOmniCapturePNGBitDepth>>(EOmniCapturePNGBitDepth::BitDepth16));
+    PNGBitDepthOptions.Add(MakeShared<TEnumOptionValue<EOmniCapturePNGBitDepth>>(EOmniCapturePNGBitDepth::BitDepth32));
 
     RefreshFeatureAvailability(true);
 
@@ -742,9 +758,41 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                .Text(LOCTEXT("CodecLabel", "Codec"))
+                .Text(LOCTEXT("PNGBitDepthLabel", "PNG Color Depth"))
+                .Visibility_Lambda([this]()
+                {
+                    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+                    const bool bShow = Snapshot.OutputFormat == EOmniOutputFormat::ImageSequence && Snapshot.ImageFormat == EOmniCaptureImageFormat::PNG;
+                    return bShow ? EVisibility::Visible : EVisibility::Collapsed;
+                })
             ]
             + SGridPanel::Slot(1, 2)
+            [
+                SAssignNew(PNGBitDepthCombo, SComboBox<TEnumOptionPtr<EOmniCapturePNGBitDepth>>)
+                .OptionsSource(&PNGBitDepthOptions)
+                .OnGenerateWidget(this, &SOmniCaptureControlPanel::GeneratePNGBitDepthOption)
+                .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandlePNGBitDepthChanged)
+                .Visibility_Lambda([this]()
+                {
+                    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+                    const bool bShow = Snapshot.OutputFormat == EOmniOutputFormat::ImageSequence && Snapshot.ImageFormat == EOmniCaptureImageFormat::PNG;
+                    return bShow ? EVisibility::Visible : EVisibility::Collapsed;
+                })
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([this]()
+                    {
+                        return PNGBitDepthToText(GetSettingsSnapshot().PNGBitDepth);
+                    })
+                ]
+            ]
+            + SGridPanel::Slot(0, 3)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("CodecLabel", "Codec"))
+            ]
+            + SGridPanel::Slot(1, 3)
             [
                 SAssignNew(CodecCombo, SComboBox<TEnumOptionPtr<EOmniCaptureCodec>>)
                 .OptionsSource(&CodecOptions)
@@ -783,13 +831,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                     })
                 ]
             ]
-            + SGridPanel::Slot(0, 3)
+            + SGridPanel::Slot(0, 4)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("ColorFormatLabel", "Color Format"))
             ]
-            + SGridPanel::Slot(1, 3)
+            + SGridPanel::Slot(1, 4)
             [
                 SAssignNew(ColorFormatCombo, SComboBox<TEnumOptionPtr<EOmniCaptureColorFormat>>)
                 .OptionsSource(&ColorFormatOptions)
@@ -828,13 +876,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                     })
                 ]
             ]
-            + SGridPanel::Slot(0, 4)
+            + SGridPanel::Slot(0, 5)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("TargetBitrateLabel", "Target Bitrate (kbps)"))
             ]
-            + SGridPanel::Slot(1, 4)
+            + SGridPanel::Slot(1, 5)
             [
                 SNew(SSpinBox<int32>)
                 .MinValue(1000)
@@ -843,13 +891,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 .Value(this, &SOmniCaptureControlPanel::GetTargetBitrate)
                 .OnValueCommitted(this, &SOmniCaptureControlPanel::HandleTargetBitrateCommitted)
             ]
-            + SGridPanel::Slot(0, 5)
+            + SGridPanel::Slot(0, 6)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("MaxBitrateLabel", "Max Bitrate (kbps)"))
             ]
-            + SGridPanel::Slot(1, 5)
+            + SGridPanel::Slot(1, 6)
             [
                 SNew(SSpinBox<int32>)
                 .MinValue(1000)
@@ -858,13 +906,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 .Value(this, &SOmniCaptureControlPanel::GetMaxBitrate)
                 .OnValueCommitted(this, &SOmniCaptureControlPanel::HandleMaxBitrateCommitted)
             ]
-            + SGridPanel::Slot(0, 6)
+            + SGridPanel::Slot(0, 7)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("GOPLengthLabel", "GOP Length"))
             ]
-            + SGridPanel::Slot(1, 6)
+            + SGridPanel::Slot(1, 7)
             [
                 SNew(SSpinBox<int32>)
                 .MinValue(1)
@@ -873,13 +921,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 .Value(this, &SOmniCaptureControlPanel::GetGOPLength)
                 .OnValueCommitted(this, &SOmniCaptureControlPanel::HandleGOPCommitted)
             ]
-            + SGridPanel::Slot(0, 7)
+            + SGridPanel::Slot(0, 8)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Text(LOCTEXT("BFramesLabel", "B-Frames"))
             ]
-            + SGridPanel::Slot(1, 7)
+            + SGridPanel::Slot(1, 8)
             [
                 SNew(SSpinBox<int32>)
                 .MinValue(0)
@@ -1928,6 +1976,10 @@ void SOmniCaptureControlPanel::RefreshConfigurationSummary()
     {
         ImageFormatCombo->SetSelectedItem(FindImageFormatOption(Snapshot.ImageFormat));
     }
+    if (PNGBitDepthCombo.IsValid())
+    {
+        PNGBitDepthCombo->SetSelectedItem(FindPNGBitDepthOption(Snapshot.PNGBitDepth));
+    }
 }
 
 void SOmniCaptureControlPanel::ModifyCaptureSettings(TFunctionRef<void(FOmniCaptureSettings&)> Mutator)
@@ -2092,6 +2144,14 @@ void SOmniCaptureControlPanel::ApplyImageFormat(EOmniCaptureImageFormat Format)
     ModifyCaptureSettings([Format](FOmniCaptureSettings& Settings)
     {
         Settings.ImageFormat = Format;
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyPNGBitDepth(EOmniCapturePNGBitDepth BitDepth)
+{
+    ModifyCaptureSettings([BitDepth](FOmniCaptureSettings& Settings)
+    {
+        Settings.PNGBitDepth = BitDepth;
     });
 }
 
@@ -2372,6 +2432,18 @@ TEnumOptionPtr<EOmniCaptureImageFormat> SOmniCaptureControlPanel::FindImageForma
     return ImageFormatOptions.Num() > 0 ? ImageFormatOptions[0] : nullptr;
 }
 
+TEnumOptionPtr<EOmniCapturePNGBitDepth> SOmniCaptureControlPanel::FindPNGBitDepthOption(EOmniCapturePNGBitDepth BitDepth) const
+{
+    for (const TEnumOptionPtr<EOmniCapturePNGBitDepth>& Option : PNGBitDepthOptions)
+    {
+        if (Option.IsValid() && static_cast<EOmniCapturePNGBitDepth>(Option->GetValue()) == BitDepth)
+        {
+            return Option;
+        }
+    }
+    return PNGBitDepthOptions.Num() > 0 ? PNGBitDepthOptions[0] : nullptr;
+}
+
 void SOmniCaptureControlPanel::HandleOutputFormatChanged(TEnumOptionPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo)
 {
     if (NewFormat.IsValid())
@@ -2425,6 +2497,22 @@ TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateImageFormatOption(TEnumOpt
         ? static_cast<EOmniCaptureImageFormat>(InValue->GetValue())
         : EOmniCaptureImageFormat::PNG;
     return SNew(STextBlock).Text(ImageFormatToText(Format));
+}
+
+void SOmniCaptureControlPanel::HandlePNGBitDepthChanged(TEnumOptionPtr<EOmniCapturePNGBitDepth> NewValue, ESelectInfo::Type SelectInfo)
+{
+    if (NewValue.IsValid())
+    {
+        ApplyPNGBitDepth(static_cast<EOmniCapturePNGBitDepth>(NewValue->GetValue()));
+    }
+}
+
+TSharedRef<SWidget> SOmniCaptureControlPanel::GeneratePNGBitDepthOption(TEnumOptionPtr<EOmniCapturePNGBitDepth> InValue) const
+{
+    const EOmniCapturePNGBitDepth BitDepth = InValue.IsValid()
+        ? static_cast<EOmniCapturePNGBitDepth>(InValue->GetValue())
+        : EOmniCapturePNGBitDepth::BitDepth32;
+    return SNew(STextBlock).Text(PNGBitDepthToText(BitDepth));
 }
 
 int32 SOmniCaptureControlPanel::GetTargetBitrate() const
