@@ -490,6 +490,15 @@ FOmniAudioSyncStats UOmniCaptureSubsystem::GetAudioSyncStats() const
     return AudioStats;
 }
 
+UTexture2D* UOmniCaptureSubsystem::GetPreviewTexture() const
+{
+    if (const AOmniCapturePreviewActor* Preview = PreviewActor.Get())
+    {
+        return Preview->GetPreviewTexture();
+    }
+    return nullptr;
+}
+
 void UOmniCaptureSubsystem::SetPreviewVisualizationMode(EOmniCapturePreviewView InView)
 {
     ActiveSettings.PreviewVisualization = InView;

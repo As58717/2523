@@ -28,6 +28,11 @@
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Layout/SOverlay.h"
+#include "Slate/SlateGameResources.h"
+#include "Types/SlateEnums.h"
+#include "Engine/Texture2D.h"
 #include "OmniCaptureTypes.h"
 #include "RHI.h"
 
@@ -610,6 +615,46 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             .Text(LOCTEXT("PreviewSafetyHint", "Preview toggles are disabled automatically while mono captures are active."))
             .AutoWrapText(true)
         ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(0.f, 6.f, 0.f, 0.f)
+        [
+            SNew(SBorder)
+            .Padding(FMargin(4.f))
+            .BorderImage(FCoreStyle::Get().GetBrush("ToolPanel.DarkGroupBorder"))
+            [
+                SNew(SBox)
+                .MinDesiredHeight(160.f)
+                [
+                    SNew(SOverlay)
+                    + SOverlay::Slot()
+                    [
+                        SAssignNew(PreviewImageWidget, SImage)
+                        .Visibility(EVisibility::Collapsed)
+                        .ColorAndOpacity(FLinearColor::White)
+                        .Stretch(EStretch::ScaleToFit)
+                    ]
+                    + SOverlay::Slot()
+                    .HAlign(HAlign_Center)
+                    .VAlign(VAlign_Center)
+                    [
+                        SAssignNew(PreviewStatusText, STextBlock)
+                        .Justification(ETextJustify::Center)
+                        .AutoWrapText(true)
+                        .WrapTextAt(320.f)
+                        .Text(LOCTEXT("PreviewStatusInitializing", "Preview ready. Start recording to see frames here."))
+                    ]
+                ]
+            ]
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(0.f, 4.f, 0.f, 0.f)
+        [
+            SAssignNew(PreviewResolutionText, STextBlock)
+            .Visibility(EVisibility::Collapsed)
+            .Text(FText::GetEmpty())
+        ]
     );
 
     TSharedRef<SWidget> EncodingSection = BuildSection(
@@ -1096,6 +1141,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
     RefreshStatus();
     UpdateOutputDirectoryDisplay();
     RefreshConfigurationSummary();
+    UpdatePreviewTextureDisplay();
     ActiveTimerHandle = RegisterActiveTimer(0.25f, FWidgetActiveTimerDelegate::CreateSP(this, &SOmniCaptureControlPanel::HandleActiveTimer));
 }
 
@@ -1312,6 +1358,7 @@ EActiveTimerReturnType SOmniCaptureControlPanel::HandleActiveTimer(double InCurr
 {
     RefreshFeatureAvailability();
     RefreshStatus();
+    UpdatePreviewTextureDisplay();
     return EActiveTimerReturnType::Continue;
 }
 
@@ -1411,6 +1458,100 @@ void SOmniCaptureControlPanel::RefreshStatus()
     UpdateOutputDirectoryDisplay();
     RebuildWarningList(Subsystem->GetActiveWarnings());
     RefreshConfigurationSummary();
+}
+
+void SOmniCaptureControlPanel::UpdatePreviewTextureDisplay()
+{
+    if (!PreviewImageWidget.IsValid() || !PreviewStatusText.IsValid())
+    {
+        return;
+    }
+
+    UOmniCaptureSubsystem* Subsystem = GetSubsystem();
+    UTexture2D* SubsystemPreviewTexture = Subsystem ? Subsystem->GetPreviewTexture() : nullptr;
+    const bool bHasValidTexture = SubsystemPreviewTexture && SubsystemPreviewTexture->GetSizeX() > 0 && SubsystemPreviewTexture->GetSizeY() > 0;
+    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+
+    if (bHasValidTexture)
+    {
+        const FVector2D NewSize(SubsystemPreviewTexture->GetSizeX(), SubsystemPreviewTexture->GetSizeY());
+        const bool bTextureChanged = CachedPreviewTexture.Get() != SubsystemPreviewTexture || !CachedPreviewSize.Equals(NewSize, KINDA_SMALL_NUMBER);
+        if (bTextureChanged || !PreviewBrush.IsValid())
+        {
+            CachedPreviewTexture = SubsystemPreviewTexture;
+            CachedPreviewSize = NewSize;
+            PreviewBrush = MakeShared<FSlateDynamicImageBrush>(SubsystemPreviewTexture, NewSize);
+            PreviewImageWidget->SetImage(PreviewBrush.Get());
+        }
+
+        PreviewImageWidget->SetVisibility(EVisibility::Visible);
+        PreviewStatusText->SetVisibility(EVisibility::Collapsed);
+
+        if (PreviewResolutionText.IsValid())
+        {
+            PreviewResolutionText->SetVisibility(EVisibility::Visible);
+            const FText LayoutText = LayoutToText(Snapshot);
+            FText ViewText;
+            switch (Snapshot.PreviewVisualization)
+            {
+            case EOmniCapturePreviewView::LeftEye:
+                ViewText = LOCTEXT("PreviewViewLeftEye", "Left Eye");
+                break;
+            case EOmniCapturePreviewView::RightEye:
+                ViewText = LOCTEXT("PreviewViewRightEye", "Right Eye");
+                break;
+            default:
+                ViewText = LOCTEXT("PreviewViewStereo", "Stereo Composite");
+                break;
+            }
+            PreviewResolutionText->SetText(FText::Format(
+                LOCTEXT("PreviewResolutionDisplay", "Preview: {0} × {1} • {2} • {3}"),
+                FText::AsNumber(static_cast<int32>(NewSize.X)),
+                FText::AsNumber(static_cast<int32>(NewSize.Y)),
+                LayoutText,
+                ViewText));
+        }
+    }
+    else
+    {
+        CachedPreviewTexture.Reset();
+        CachedPreviewSize = FVector2D::ZeroVector;
+
+        if (PreviewBrush.IsValid())
+        {
+            PreviewBrush.Reset();
+        }
+
+        PreviewImageWidget->SetImage(nullptr);
+        PreviewImageWidget->SetVisibility(EVisibility::Collapsed);
+
+        FText StatusMessage;
+        if (!Subsystem)
+        {
+            StatusMessage = LOCTEXT("PreviewStatusNoWorld", "Preview unavailable: no active editor world.");
+        }
+        else if (!Snapshot.bEnablePreviewWindow)
+        {
+            StatusMessage = LOCTEXT("PreviewStatusDisabled", "Preview disabled. Enable the preview window to see frames here.");
+        }
+        else if (!Subsystem->IsCapturing())
+        {
+            StatusMessage = LOCTEXT("PreviewStatusIdle", "Start a capture to see the live preview.");
+        }
+        else
+        {
+            StatusMessage = LOCTEXT("PreviewStatusPending", "Waiting for preview frame…");
+        }
+
+        PreviewStatusText->SetVisibility(EVisibility::Visible);
+        PreviewStatusText->SetText(StatusMessage);
+
+        if (PreviewResolutionText.IsValid())
+        {
+            PreviewResolutionText->SetText(FText::GetEmpty());
+            PreviewResolutionText->SetVisibility(EVisibility::Collapsed);
+        }
+    }
 }
 
 void SOmniCaptureControlPanel::RebuildWarningList(const TArray<FString>& Warnings)
@@ -2132,6 +2273,8 @@ void SOmniCaptureControlPanel::HandlePreviewViewChanged(ECheckBoxState NewState,
     {
         Subsystem->SetPreviewVisualizationMode(View);
     }
+
+    UpdatePreviewTextureDisplay();
 }
 
 TEnumOptionPtr<EOmniCaptureStereoLayout> SOmniCaptureControlPanel::FindStereoLayoutOption(EOmniCaptureStereoLayout Layout) const
