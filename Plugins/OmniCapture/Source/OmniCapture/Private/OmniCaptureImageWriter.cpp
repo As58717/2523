@@ -120,6 +120,18 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
             bWriteSuccessful = WriteEXRFromColor(*SRGBData, FilePath);
         }
         break;
+    case EOmniCaptureImageFormat::BMP:
+        if (bIsLinear)
+        {
+            const TImagePixelData<FFloat16Color>* LinearBMP = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
+            bWriteSuccessful = WriteBMPFromLinear(*LinearBMP, FilePath);
+        }
+        else
+        {
+            const TImagePixelData<FColor>* BmpColor = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
+            bWriteSuccessful = WriteBMP(*BmpColor, FilePath);
+        }
+        break;
     case EOmniCaptureImageFormat::PNG:
     default:
         if (bIsLinear)
@@ -173,6 +185,36 @@ bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData,
     return FFileHelper::SaveArrayToFile(CompressedData, *FilePath);
 }
 
+bool FOmniCaptureImageWriter::WriteBMP(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const
+{
+    const TSharedPtr<IImageWrapper> ImageWrapper = CreateImageWrapper(EImageFormat::BMP);
+    if (!ImageWrapper.IsValid())
+    {
+        return false;
+    }
+
+    const FIntPoint Size = PixelData.GetSize();
+    const TArray64<FColor>& Pixels = PixelData.Pixels;
+    if (Pixels.Num() != Size.X * Size.Y)
+    {
+        return false;
+    }
+
+    if (!ImageWrapper->SetRaw(reinterpret_cast<const uint8*>(Pixels.GetData()), Pixels.Num() * sizeof(FColor), Size.X, Size.Y, ERGBFormat::BGRA, 8))
+    {
+        return false;
+    }
+
+    const TArray64<uint8> CompressedData = ImageWrapper->GetCompressed(0);
+    if (CompressedData.Num() == 0)
+    {
+        return false;
+    }
+
+    IFileManager::Get().Delete(*FilePath, false, true, false);
+    return FFileHelper::SaveArrayToFile(CompressedData, *FilePath);
+}
+
 bool FOmniCaptureImageWriter::WritePNGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const
 {
     const FIntPoint Size = PixelData.GetSize();
@@ -198,6 +240,33 @@ bool FOmniCaptureImageWriter::WritePNGFromLinear(const TImagePixelData<FFloat16C
     TUniquePtr<TImagePixelData<FColor>> TempData = MakeUnique<TImagePixelData<FColor>>(Size);
     TempData->Pixels = MoveTemp(Converted);
     return WritePNG(*TempData, FilePath);
+}
+
+bool FOmniCaptureImageWriter::WriteBMPFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const
+{
+    const FIntPoint Size = PixelData.GetSize();
+    const int32 ExpectedCount = Size.X * Size.Y;
+    if (PixelData.Pixels.Num() != ExpectedCount)
+    {
+        return false;
+    }
+
+    TArray<FColor> Converted;
+    Converted.SetNum(ExpectedCount);
+    for (int32 Index = 0; Index < ExpectedCount; ++Index)
+    {
+        const FFloat16Color& Pixel = PixelData.Pixels[Index];
+        const FLinearColor Linear(
+            Pixel.R.GetFloat(),
+            Pixel.G.GetFloat(),
+            Pixel.B.GetFloat(),
+            Pixel.A.GetFloat());
+        Converted[Index] = Linear.ToFColor(true);
+    }
+
+    TUniquePtr<TImagePixelData<FColor>> TempData = MakeUnique<TImagePixelData<FColor>>(Size);
+    TempData->Pixels = MoveTemp(Converted);
+    return WriteBMP(*TempData, FilePath);
 }
 
 bool FOmniCaptureImageWriter::WriteJPEG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const

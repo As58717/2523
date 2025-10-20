@@ -124,6 +124,21 @@ bool FOmniCaptureSettings::IsPlanar() const
     return Projection == EOmniCaptureProjection::Planar2D;
 }
 
+bool FOmniCaptureSettings::IsCylindrical() const
+{
+    return Projection == EOmniCaptureProjection::Cylindrical;
+}
+
+bool FOmniCaptureSettings::IsFullDome() const
+{
+    return Projection == EOmniCaptureProjection::FullDome;
+}
+
+bool FOmniCaptureSettings::IsSphericalMirror() const
+{
+    return Projection == EOmniCaptureProjection::SphericalMirror;
+}
+
 bool FOmniCaptureSettings::IsVR180() const
 {
     return Coverage == EOmniCaptureCoverage::HalfSphere;
@@ -185,6 +200,22 @@ float FOmniCaptureSettings::GetHorizontalFOVDegrees() const
     {
         return 90.0f;
     }
+
+    if (IsCylindrical())
+    {
+        return IsVR180() ? 180.0f : 360.0f;
+    }
+
+    if (IsFullDome())
+    {
+        return 180.0f;
+    }
+
+    if (IsSphericalMirror())
+    {
+        return IsVR180() ? 200.0f : 220.0f;
+    }
+
     return IsVR180() ? 180.0f : 360.0f;
 }
 
@@ -194,6 +225,22 @@ float FOmniCaptureSettings::GetVerticalFOVDegrees() const
     {
         return 90.0f;
     }
+
+    if (IsCylindrical())
+    {
+        return 180.0f;
+    }
+
+    if (IsFullDome())
+    {
+        return 180.0f;
+    }
+
+    if (IsSphericalMirror())
+    {
+        return 180.0f;
+    }
+
     return 180.0f;
 }
 
@@ -215,6 +262,8 @@ FString FOmniCaptureSettings::GetImageFileExtension() const
         return TEXT(".jpg");
     case EOmniCaptureImageFormat::EXR:
         return TEXT(".exr");
+    case EOmniCaptureImageFormat::BMP:
+        return TEXT(".bmp");
     case EOmniCaptureImageFormat::PNG:
     default:
         return TEXT(".png");
