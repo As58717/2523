@@ -1453,7 +1453,7 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
 
     FFeatureAvailabilityState NewState;
 
-    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
     const FOmniNVENCCapabilities Caps = FOmniCaptureNVENCEncoder::QueryCapabilities();
 
     if (Caps.bHardwareAvailable)
@@ -1481,6 +1481,21 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
     NewState.NVENCP010.Reason = Caps.bSupportsP010
         ? LOCTEXT("P010SupportedTooltip", "10-bit P010 input is supported by NVENC.")
         : LOCTEXT("P010UnsupportedTooltip", "This NVENC hardware does not support 10-bit P010 input.");
+
+    if (NewState.NVENC.bAvailable)
+    {
+        const bool bPreferNVENC = SettingsObject.IsValid() ? SettingsObject->bPreferNVENCWhenAvailable : true;
+        if (bPreferNVENC)
+        {
+            UOmniCaptureSubsystem* Subsystem = GetSubsystem();
+            const bool bCapturing = Subsystem && Subsystem->IsCapturing();
+            if (!bCapturing && Snapshot.OutputFormat == EOmniOutputFormat::ImageSequence)
+            {
+                ApplyOutputFormat(EOmniOutputFormat::NVENCHardware);
+                Snapshot = GetSettingsSnapshot();
+            }
+        }
+    }
 
 #if PLATFORM_WINDOWS
     const bool bSupportsZeroCopy = FOmniCaptureNVENCEncoder::SupportsZeroCopyRHI();
@@ -1885,9 +1900,17 @@ void SOmniCaptureControlPanel::ApplyProjection(EOmniCaptureProjection Projection
 
 void SOmniCaptureControlPanel::ApplyOutputFormat(EOmniOutputFormat Format)
 {
-    ModifyCaptureSettings([Format](FOmniCaptureSettings& Settings)
+    const bool bPreferNVENC = Format != EOmniOutputFormat::ImageSequence;
+    ModifyCaptureSettings([this, Format, bPreferNVENC](FOmniCaptureSettings& Settings)
     {
         Settings.OutputFormat = Format;
+        if (SettingsObject.IsValid())
+        {
+            if (UOmniCaptureEditorSettings* EditorSettings = SettingsObject.Get())
+            {
+                EditorSettings->bPreferNVENCWhenAvailable = bPreferNVENC;
+            }
+        }
     });
 }
 

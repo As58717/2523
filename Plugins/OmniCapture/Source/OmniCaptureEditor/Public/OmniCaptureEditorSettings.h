@@ -16,5 +16,8 @@ public:
     FOmniCaptureSettings CaptureSettings;
 
     UPROPERTY(EditAnywhere, Config, Category = "Capture")
+    bool bPreferNVENCWhenAvailable = true;
+
+    UPROPERTY(EditAnywhere, Config, Category = "Capture")
     bool bAutoOpenPanel = true;
 };
