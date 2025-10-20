@@ -86,7 +86,9 @@ struct OMNICAPTURE_API FOmniCaptureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") bool bRecordAudio = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") float AudioGain = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") TSoftObjectPtr<class USoundSubmix> SubmixToRecord;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") float InterPupillaryDistanceCm = 6.4f;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") float InterPupillaryDistanceCm = 6.4f;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") FVector CaptureLocation = FVector::ZeroVector;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") FRotator CaptureRotation = FRotator::ZeroRotator;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, UIMin = 0.0)) float SegmentDurationSeconds = 0.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0)) int32 SegmentSizeLimitMB = 0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") bool bCreateSegmentSubfolders = true;

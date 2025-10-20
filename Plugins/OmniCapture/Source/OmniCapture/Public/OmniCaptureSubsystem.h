@@ -89,6 +89,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "OmniCapture")
     void SetPreviewVisualizationMode(EOmniCapturePreviewView InView);
 
+    void SetCaptureTransform(const FVector& InLocation, const FRotator& InRotation);
+
 private:
     void CreateRig();
     void DestroyRig();
@@ -98,6 +100,7 @@ private:
 
     void SpawnPreviewActor();
     void DestroyPreviewActor();
+    void UpdatePreviewTransform();
     void InitializeOutputWriters();
     void ShutdownOutputWriters(bool bFinalizeOutputs);
     void FinalizeOutputs(bool bFinalizeOutputs);

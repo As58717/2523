@@ -2,6 +2,7 @@
 
 #include "DesktopPlatformModule.h"
 #include "Editor.h"
+#include "EditorViewportClient.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
@@ -15,6 +16,9 @@
 #include "PropertyEditorModule.h"
 #include "Styling/CoreStyle.h"
 #include "Internationalization/Internationalization.h"
+#include "Engine/Selection.h"
+#include "Selection.h"
+#include "Logging/LogMacros.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -31,6 +35,8 @@
 #include "OmniCaptureTypes.h"
 #include "RHI.h"
 
+
+DEFINE_LOG_CATEGORY_STATIC(LogOmniCaptureControlPanel, Log, All);
 
 #define LOCTEXT_NAMESPACE "OmniCaptureControlPanel"
 
@@ -1011,6 +1017,55 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
+            .Padding(0.f, 4.f, 0.f, 0.f)
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(0.f, 0.f, 8.f, 0.f)
+                [
+                    SNew(SButton)
+                    .Text(LOCTEXT("UseViewportOrigin", "Use Viewport Position"))
+                    .ToolTipText(LOCTEXT("UseViewportOriginTooltip", "Move the capture rig to the active perspective viewport camera."))
+                    .OnClicked(this, &SOmniCaptureControlPanel::OnUseViewportAsCaptureOrigin)
+                    .IsEnabled(this, &SOmniCaptureControlPanel::CanEditCaptureTransform)
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(0.f, 0.f, 8.f, 0.f)
+                [
+                    SNew(SButton)
+                    .Text(LOCTEXT("UseSelectionOrigin", "Use Selection Center"))
+                    .ToolTipText(LOCTEXT("UseSelectionOriginTooltip", "Center the capture rig on the average position of the currently selected actors."))
+                    .OnClicked(this, &SOmniCaptureControlPanel::OnUseSelectionAsCaptureOrigin)
+                    .IsEnabled(this, &SOmniCaptureControlPanel::CanEditCaptureTransform)
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                [
+                    SNew(SButton)
+                    .Text(LOCTEXT("ResetCaptureOrigin", "Reset Origin"))
+                    .ToolTipText(LOCTEXT("ResetCaptureOriginTooltip", "Reset the capture rig location and orientation to the world origin."))
+                    .OnClicked(this, &SOmniCaptureControlPanel::OnResetCaptureOrigin)
+                    .IsEnabled(this, &SOmniCaptureControlPanel::CanEditCaptureTransform)
+                ]
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SAssignNew(CaptureOriginTextBlock, STextBlock)
+                .Text(this, &SOmniCaptureControlPanel::GetCaptureOriginSummary)
+                .AutoWrapText(true)
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SAssignNew(CaptureRotationTextBlock, STextBlock)
+                .Text(this, &SOmniCaptureControlPanel::GetCaptureRotationSummary)
+                .AutoWrapText(true)
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
             [
                 SAssignNew(FrameRateTextBlock, STextBlock)
                 .Text(LOCTEXT("FrameRateInactive", "Frame Rate: 0.00 FPS"))
@@ -1453,7 +1508,7 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
 
     FFeatureAvailabilityState NewState;
 
-    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
     const FOmniNVENCCapabilities Caps = FOmniCaptureNVENCEncoder::QueryCapabilities();
 
     if (Caps.bHardwareAvailable)
@@ -1481,6 +1536,28 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
     NewState.NVENCP010.Reason = Caps.bSupportsP010
         ? LOCTEXT("P010SupportedTooltip", "10-bit P010 input is supported by NVENC.")
         : LOCTEXT("P010UnsupportedTooltip", "This NVENC hardware does not support 10-bit P010 input.");
+
+    UOmniCaptureSubsystem* Subsystem = GetSubsystem();
+    const bool bCapturing = Subsystem && Subsystem->IsCapturing();
+
+    if (NewState.NVENC.bAvailable)
+    {
+        if (!bUserLockedToImageSequence && !bCapturing && Snapshot.OutputFormat == EOmniOutputFormat::ImageSequence)
+        {
+            ApplyOutputFormat(EOmniOutputFormat::NVENCHardware);
+            Snapshot = GetSettingsSnapshot();
+        }
+    }
+    else
+    {
+        bUserLockedToImageSequence = false;
+
+        if (!bCapturing && Snapshot.OutputFormat == EOmniOutputFormat::NVENCHardware)
+        {
+            ApplyOutputFormat(EOmniOutputFormat::ImageSequence);
+            Snapshot = GetSettingsSnapshot();
+        }
+    }
 
 #if PLATFORM_WINDOWS
     const bool bSupportsZeroCopy = FOmniCaptureNVENCEncoder::SupportsZeroCopyRHI();
@@ -1760,6 +1837,14 @@ void SOmniCaptureControlPanel::RefreshConfigurationSummary()
     {
         ImageFormatCombo->SetSelectedItem(FindImageFormatOption(Snapshot.ImageFormat));
     }
+    if (CaptureOriginTextBlock.IsValid())
+    {
+        CaptureOriginTextBlock->SetText(GetCaptureOriginSummary());
+    }
+    if (CaptureRotationTextBlock.IsValid())
+    {
+        CaptureRotationTextBlock->SetText(GetCaptureRotationSummary());
+    }
 }
 
 void SOmniCaptureControlPanel::ModifyCaptureSettings(TFunctionRef<void(FOmniCaptureSettings&)> Mutator)
@@ -1913,6 +1998,23 @@ void SOmniCaptureControlPanel::ApplyImageFormat(EOmniCaptureImageFormat Format)
     {
         Settings.ImageFormat = Format;
     });
+}
+
+void SOmniCaptureControlPanel::ApplyCaptureTransform(const FVector& Location, const FRotator& Rotation)
+{
+    ModifyCaptureSettings([Location, Rotation](FOmniCaptureSettings& Settings)
+    {
+        Settings.CaptureLocation = Location;
+        Settings.CaptureRotation = Rotation;
+    });
+
+    if (UOmniCaptureSubsystem* Subsystem = GetSubsystem())
+    {
+        if (Subsystem->IsCapturing())
+        {
+            Subsystem->SetCaptureTransform(Location, Rotation);
+        }
+    }
 }
 
 void SOmniCaptureControlPanel::ApplyMetadataToggle(EMetadataToggle Toggle, bool bEnabled)
@@ -2192,6 +2294,17 @@ void SOmniCaptureControlPanel::HandleOutputFormatChanged(TEnumOptionPtr<EOmniOut
         {
             return;
         }
+        if (SelectInfo != ESelectInfo::Direct)
+        {
+            if (Format == EOmniOutputFormat::ImageSequence)
+            {
+                bUserLockedToImageSequence = FeatureAvailability.NVENC.bAvailable;
+            }
+            else if (Format == EOmniOutputFormat::NVENCHardware)
+            {
+                bUserLockedToImageSequence = false;
+            }
+        }
         ApplyOutputFormat(Format);
     }
 }
@@ -2236,6 +2349,163 @@ TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateImageFormatOption(TEnumOpt
         ? static_cast<EOmniCaptureImageFormat>(InValue->GetValue())
         : EOmniCaptureImageFormat::PNG;
     return SNew(STextBlock).Text(ImageFormatToText(Format));
+}
+
+FText SOmniCaptureControlPanel::GetCaptureOriginSummary() const
+{
+    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    const FVector Origin = Snapshot.CaptureLocation;
+
+    const FNumberFormattingOptions& FormatOptions = []() -> const FNumberFormattingOptions&
+    {
+        static FNumberFormattingOptions Options;
+        static bool bInitialized = false;
+        if (!bInitialized)
+        {
+            Options.MinimumFractionalDigits = 0;
+            Options.MaximumFractionalDigits = 2;
+            bInitialized = true;
+        }
+        return Options;
+    }();
+
+    return FText::Format(LOCTEXT("CaptureOriginSummary", "Capture origin: X={0} Y={1} Z={2}"),
+        FText::AsNumber(Origin.X, &FormatOptions),
+        FText::AsNumber(Origin.Y, &FormatOptions),
+        FText::AsNumber(Origin.Z, &FormatOptions));
+}
+
+FText SOmniCaptureControlPanel::GetCaptureRotationSummary() const
+{
+    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    const FRotator Rotation = Snapshot.CaptureRotation;
+
+    const FNumberFormattingOptions& FormatOptions = []() -> const FNumberFormattingOptions&
+    {
+        static FNumberFormattingOptions Options;
+        static bool bInitialized = false;
+        if (!bInitialized)
+        {
+            Options.MinimumFractionalDigits = 0;
+            Options.MaximumFractionalDigits = 1;
+            bInitialized = true;
+        }
+        return Options;
+    }();
+
+    return FText::Format(LOCTEXT("CaptureRotationSummary", "Capture orientation: Pitch={0} Yaw={1} Roll={2}"),
+        FText::AsNumber(Rotation.Pitch, &FormatOptions),
+        FText::AsNumber(Rotation.Yaw, &FormatOptions),
+        FText::AsNumber(Rotation.Roll, &FormatOptions));
+}
+
+FReply SOmniCaptureControlPanel::OnUseViewportAsCaptureOrigin()
+{
+    FVector Location = FVector::ZeroVector;
+    FRotator Rotation = FRotator::ZeroRotator;
+    if (TryGetViewportTransform(Location, Rotation))
+    {
+        ApplyCaptureTransform(Location, Rotation);
+    }
+    else
+    {
+        UE_LOG(LogOmniCaptureControlPanel, Warning, TEXT("No active perspective viewport available to derive capture origin."));
+    }
+    return FReply::Handled();
+}
+
+FReply SOmniCaptureControlPanel::OnUseSelectionAsCaptureOrigin()
+{
+    FVector Location = FVector::ZeroVector;
+    FRotator Rotation = FRotator::ZeroRotator;
+    if (TryGetSelectionTransform(Location, Rotation))
+    {
+        ApplyCaptureTransform(Location, Rotation);
+    }
+    else
+    {
+        UE_LOG(LogOmniCaptureControlPanel, Warning, TEXT("Select at least one actor to derive a capture origin."));
+    }
+    return FReply::Handled();
+}
+
+FReply SOmniCaptureControlPanel::OnResetCaptureOrigin()
+{
+    ApplyCaptureTransform(FVector::ZeroVector, FRotator::ZeroRotator);
+    return FReply::Handled();
+}
+
+bool SOmniCaptureControlPanel::CanEditCaptureTransform() const
+{
+    return true;
+}
+
+bool SOmniCaptureControlPanel::TryGetViewportTransform(FVector& OutLocation, FRotator& OutRotation) const
+{
+#if WITH_EDITOR
+    if (!GEditor)
+    {
+        return false;
+    }
+
+    const TArray<FEditorViewportClient*>& ViewportClients = GEditor->GetAllViewportClients();
+    for (FEditorViewportClient* Client : ViewportClients)
+    {
+        if (Client && Client->IsPerspective())
+        {
+            OutLocation = Client->GetViewLocation();
+            OutRotation = Client->GetViewRotation();
+            return true;
+        }
+    }
+#endif
+    return false;
+}
+
+bool SOmniCaptureControlPanel::TryGetSelectionTransform(FVector& OutLocation, FRotator& OutRotation) const
+{
+#if WITH_EDITOR
+    if (!GEditor)
+    {
+        return false;
+    }
+
+    USelection* SelectedActors = GEditor->GetSelectedActors();
+    if (!SelectedActors || SelectedActors->Num() == 0)
+    {
+        return false;
+    }
+
+    FVector AccumulatedLocation = FVector::ZeroVector;
+    int32 ActorCount = 0;
+    FRotator ReferenceRotation = FRotator::ZeroRotator;
+    bool bHasReferenceRotation = false;
+
+    for (FSelectionIterator It(*SelectedActors); It; ++It)
+    {
+        if (AActor* Actor = Cast<AActor>(*It))
+        {
+            AccumulatedLocation += Actor->GetActorLocation();
+            ++ActorCount;
+            if (!bHasReferenceRotation)
+            {
+                ReferenceRotation = Actor->GetActorRotation();
+                bHasReferenceRotation = true;
+            }
+        }
+    }
+
+    if (ActorCount == 0)
+    {
+        return false;
+    }
+
+    OutLocation = AccumulatedLocation / static_cast<float>(ActorCount);
+    OutRotation = bHasReferenceRotation ? ReferenceRotation : FRotator::ZeroRotator;
+    return true;
+#else
+    return false;
+#endif
 }
 
 int32 SOmniCaptureControlPanel::GetTargetBitrate() const

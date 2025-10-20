@@ -338,7 +338,8 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
     SpawnParams.ObjectFlags |= RF_Transient;
 
-    AOmniCaptureRigActor* TempRig = World->SpawnActor<AOmniCaptureRigActor>(AOmniCaptureRigActor::StaticClass(), FTransform::Identity, SpawnParams);
+    const FTransform StillTransform(StillSettings.CaptureRotation, StillSettings.CaptureLocation);
+    AOmniCaptureRigActor* TempRig = World->SpawnActor<AOmniCaptureRigActor>(AOmniCaptureRigActor::StaticClass(), StillTransform, SpawnParams);
     if (!TempRig)
     {
         UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Failed to spawn capture rig for still capture."));
@@ -503,6 +504,25 @@ void UOmniCaptureSubsystem::SetPreviewVisualizationMode(EOmniCapturePreviewView 
     LastPreviewUpdateTime = 0.0;
 }
 
+void UOmniCaptureSubsystem::SetCaptureTransform(const FVector& InLocation, const FRotator& InRotation)
+{
+    if (bIsCapturing)
+    {
+        ActiveSettings.CaptureLocation = InLocation;
+        ActiveSettings.CaptureRotation = InRotation;
+    }
+
+    OriginalSettings.CaptureLocation = InLocation;
+    OriginalSettings.CaptureRotation = InRotation;
+
+    if (AOmniCaptureRigActor* Rig = RigActor.Get())
+    {
+        Rig->SetActorLocationAndRotation(InLocation, InRotation);
+    }
+
+    UpdatePreviewTransform();
+}
+
 void UOmniCaptureSubsystem::CreateRig()
 {
     DestroyRig();
@@ -517,7 +537,8 @@ void UOmniCaptureSubsystem::CreateRig()
     SpawnParams.Name = OmniCapture::RigActorName;
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-    if (AOmniCaptureRigActor* NewRig = World->SpawnActor<AOmniCaptureRigActor>(SpawnParams))
+    const FTransform RigTransform(ActiveSettings.CaptureRotation, ActiveSettings.CaptureLocation);
+    if (AOmniCaptureRigActor* NewRig = World->SpawnActor<AOmniCaptureRigActor>(AOmniCaptureRigActor::StaticClass(), RigTransform, SpawnParams))
     {
         NewRig->Configure(ActiveSettings);
         RigActor = NewRig;
@@ -587,13 +608,8 @@ void UOmniCaptureSubsystem::SpawnPreviewActor()
         Preview->Initialize(ActiveSettings.PreviewScreenScale, OutputSize);
         Preview->SetPreviewEnabled(true);
         Preview->SetPreviewView(ActiveSettings.PreviewVisualization);
-        if (RigActor.IsValid())
-        {
-            Preview->AttachToActor(RigActor.Get(), FAttachmentTransformRules::KeepWorldTransform);
-            const float Offset = FMath::Max(OutputSize.X, OutputSize.Y) * 0.05f;
-            Preview->SetActorLocation(RigActor->GetActorLocation() + FVector(Offset, 0.0f, 0.0f));
-        }
         PreviewActor = Preview;
+        UpdatePreviewTransform();
     }
 }
 
@@ -605,6 +621,29 @@ void UOmniCaptureSubsystem::DestroyPreviewActor()
         Preview->Destroy();
     }
     PreviewActor.Reset();
+}
+
+void UOmniCaptureSubsystem::UpdatePreviewTransform()
+{
+    if (!PreviewActor.IsValid() || !RigActor.IsValid())
+    {
+        return;
+    }
+
+    AOmniCapturePreviewActor* Preview = PreviewActor.Get();
+    AOmniCaptureRigActor* Rig = RigActor.Get();
+
+    if (!Preview || !Rig)
+    {
+        return;
+    }
+
+    Preview->AttachToActor(Rig, FAttachmentTransformRules::KeepWorldTransform);
+
+    const FIntPoint OutputSize = ActiveSettings.GetOutputResolution();
+    const float Offset = FMath::Max(OutputSize.X, OutputSize.Y) * 0.05f;
+    Preview->SetActorLocation(Rig->GetActorLocation() + FVector(Offset, 0.0f, 0.0f));
+    Preview->SetActorRotation(Rig->GetActorRotation());
 }
 
 void UOmniCaptureSubsystem::InitializeOutputWriters()

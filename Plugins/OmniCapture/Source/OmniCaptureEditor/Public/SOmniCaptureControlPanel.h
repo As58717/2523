@@ -103,6 +103,7 @@ private:
     void ApplyCodec(EOmniCaptureCodec Codec);
     void ApplyColorFormat(EOmniCaptureColorFormat Format);
     void ApplyImageFormat(EOmniCaptureImageFormat Format);
+    void ApplyCaptureTransform(const FVector& Location, const FRotator& Rotation);
     void ApplyMetadataToggle(EMetadataToggle Toggle, bool bEnabled);
 
     ECheckBoxState GetVRModeCheckState(bool bVR180) const;
@@ -144,6 +145,15 @@ private:
     void HandleOutputFormatChanged(TEnumOptionPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo);
     void HandleCodecChanged(TEnumOptionPtr<EOmniCaptureCodec> NewCodec, ESelectInfo::Type SelectInfo);
     void HandleColorFormatChanged(TEnumOptionPtr<EOmniCaptureColorFormat> NewFormat, ESelectInfo::Type SelectInfo);
+
+    FText GetCaptureOriginSummary() const;
+    FText GetCaptureRotationSummary() const;
+    FReply OnUseViewportAsCaptureOrigin();
+    FReply OnUseSelectionAsCaptureOrigin();
+    FReply OnResetCaptureOrigin();
+    bool CanEditCaptureTransform() const;
+    bool TryGetViewportTransform(FVector& OutLocation, FRotator& OutRotation) const;
+    bool TryGetSelectionTransform(FVector& OutLocation, FRotator& OutRotation) const;
 
     int32 GetTargetBitrate() const;
     int32 GetMaxBitrate() const;
@@ -194,6 +204,8 @@ private:
     TSharedPtr<STextBlock> DerivedOutputTextBlock;
     TSharedPtr<STextBlock> DerivedFOVTextBlock;
     TSharedPtr<STextBlock> EncoderAlignmentTextBlock;
+    TSharedPtr<STextBlock> CaptureOriginTextBlock;
+    TSharedPtr<STextBlock> CaptureRotationTextBlock;
     TArray<TSharedPtr<FString>> WarningItems;
     TSharedPtr<SListView<TSharedPtr<FString>>> WarningListView;
     TWeakPtr<FActiveTimerHandle> ActiveTimerHandle;
@@ -214,4 +226,5 @@ private:
 
     FFeatureAvailabilityState FeatureAvailability;
     double LastFeatureAvailabilityCheckTime = 0.0;
+    bool bUserLockedToImageSequence = false;
 };
