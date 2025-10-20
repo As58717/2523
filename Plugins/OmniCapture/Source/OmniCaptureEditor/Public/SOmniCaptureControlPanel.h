@@ -123,6 +123,7 @@ private:
 
     int32 GetPerEyeWidthValue() const;
     int32 GetPerEyeHeightValue() const;
+    TOptional<int32> GetPerEyeDimensionMaxValue() const;
     int32 GetPlanarWidthValue() const;
     int32 GetPlanarHeightValue() const;
     int32 GetPlanarScaleValue() const;

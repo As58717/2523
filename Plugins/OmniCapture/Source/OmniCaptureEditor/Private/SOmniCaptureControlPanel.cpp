@@ -379,7 +379,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 [
                     SNew(SSpinBox<int32>)
                     .MinValue(512)
-                    .MaxValue(16384)
+                    .MaxValue(this, &SOmniCaptureControlPanel::GetPerEyeDimensionMaxValue)
                     .Delta(64)
                     .Value(this, &SOmniCaptureControlPanel::GetPerEyeWidthValue)
                     .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePerEyeWidthCommitted)
@@ -394,7 +394,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 [
                     SNew(SSpinBox<int32>)
                     .MinValue(512)
-                    .MaxValue(16384)
+                    .MaxValue(this, &SOmniCaptureControlPanel::GetPerEyeDimensionMaxValue)
                     .Delta(64)
                     .Value(this, &SOmniCaptureControlPanel::GetPerEyeHeightValue)
                     .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePerEyeHeightCommitted)
@@ -2005,7 +2005,9 @@ void SOmniCaptureControlPanel::ApplyPerEyeWidth(int32 NewWidth)
     ModifyCaptureSettings([NewWidth](FOmniCaptureSettings& Settings)
     {
         const int32 Alignment = Settings.GetEncoderAlignmentRequirement();
-        const int32 Base = Settings.IsVR180() ? NewWidth : FMath::Max(1, NewWidth / 2);
+        const int32 MaxDimension = Settings.IsStereo() ? 16384 : 32768;
+        const int32 ClampedWidth = FMath::Clamp(NewWidth, 1, MaxDimension);
+        const int32 Base = Settings.IsVR180() ? ClampedWidth : FMath::Max(1, ClampedWidth / 2);
         Settings.Resolution = AlignDimensionUI(Base, Alignment);
     });
 }
@@ -2015,7 +2017,9 @@ void SOmniCaptureControlPanel::ApplyPerEyeHeight(int32 NewHeight)
     ModifyCaptureSettings([NewHeight](FOmniCaptureSettings& Settings)
     {
         const int32 Alignment = Settings.GetEncoderAlignmentRequirement();
-        Settings.Resolution = AlignDimensionUI(NewHeight, Alignment);
+        const int32 MaxDimension = Settings.IsStereo() ? 16384 : 32768;
+        const int32 ClampedHeight = FMath::Clamp(NewHeight, 1, MaxDimension);
+        Settings.Resolution = AlignDimensionUI(ClampedHeight, Alignment);
     });
 }
 
@@ -2191,6 +2195,13 @@ int32 SOmniCaptureControlPanel::GetPerEyeWidthValue() const
 int32 SOmniCaptureControlPanel::GetPerEyeHeightValue() const
 {
     return GetSettingsSnapshot().GetPerEyeOutputResolution().Y;
+}
+
+TOptional<int32> SOmniCaptureControlPanel::GetPerEyeDimensionMaxValue() const
+{
+    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    const int32 MaxValue = Snapshot.IsStereo() ? 16384 : 32768;
+    return TOptional<int32>(MaxValue);
 }
 
 int32 SOmniCaptureControlPanel::GetPlanarWidthValue() const
