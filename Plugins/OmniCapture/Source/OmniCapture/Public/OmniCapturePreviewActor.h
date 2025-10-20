@@ -22,6 +22,8 @@ public:
     void UpdatePreviewTexture(const FOmniCaptureEquirectResult& Result, const FOmniCaptureSettings& Settings);
     void SetPreviewEnabled(bool bEnabled);
     void SetPreviewView(EOmniCapturePreviewView InView);
+    UTexture2D* GetPreviewTexture() const { return PreviewTexture; }
+    FIntPoint GetPreviewResolution() const { return PreviewResolution; }
 
 protected:
     virtual void BeginPlay() override;

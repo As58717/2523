@@ -31,8 +31,11 @@ using TEnumOptionPtr = TSharedPtr<TEnumOptionValue<EnumType>>;
 class SListViewBase;
 template<typename ItemType> class SListView;
 class IDetailsView;
+class SImage;
+class FSlateDynamicImageBrush;
 class UOmniCaptureEditorSettings;
 class UOmniCaptureSubsystem;
+class UTexture2D;
 
 class OMNICAPTUREEDITOR_API SOmniCaptureControlPanel : public SCompoundWidget
 {
@@ -87,6 +90,7 @@ private:
     void RefreshStatus();
     void UpdateOutputDirectoryDisplay();
     void RefreshConfigurationSummary();
+    void UpdatePreviewTextureDisplay();
 
     void ModifyCaptureSettings(TFunctionRef<void(FOmniCaptureSettings&)> Mutator);
     FOmniCaptureSettings GetSettingsSnapshot() const;
@@ -214,4 +218,11 @@ private:
 
     FFeatureAvailabilityState FeatureAvailability;
     double LastFeatureAvailabilityCheckTime = 0.0;
+
+    TSharedPtr<SImage> PreviewImageWidget;
+    TSharedPtr<STextBlock> PreviewStatusText;
+    TSharedPtr<STextBlock> PreviewResolutionText;
+    TSharedPtr<FSlateDynamicImageBrush> PreviewBrush;
+    TWeakObjectPtr<UTexture2D> CachedPreviewTexture;
+    FVector2D CachedPreviewSize = FVector2D::ZeroVector;
 };

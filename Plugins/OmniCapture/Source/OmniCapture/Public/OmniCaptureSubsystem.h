@@ -12,6 +12,7 @@
 class AOmniCaptureRigActor;
 class AOmniCaptureDirectorActor;
 class AOmniCapturePreviewActor;
+class UTexture2D;
 
 struct FOmniCaptureSegmentRecord
 {
@@ -76,6 +77,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "OmniCapture")
     double GetCurrentFrameRate() const { return CurrentCaptureFPS; }
+
+    UFUNCTION(BlueprintCallable, Category = "OmniCapture")
+    UTexture2D* GetPreviewTexture() const;
 
     UFUNCTION(BlueprintCallable, Category = "OmniCapture")
     bool HasFinalizedOutput() const { return !LastFinalizedOutput.IsEmpty(); }
