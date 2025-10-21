@@ -82,6 +82,36 @@ namespace
 
     IMPLEMENT_GLOBAL_SHADER(FOmniEquirectCS, "/Plugin/OmniCapture/Private/OmniEquirectCS.usf", "MainCS", SF_Compute);
 
+    class FOmniFisheyeCS final : public FGlobalShader
+    {
+    public:
+        DECLARE_GLOBAL_SHADER(FOmniFisheyeCS);
+        SHADER_USE_PARAMETER_STRUCT(FOmniFisheyeCS, FGlobalShader);
+
+        BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+            SHADER_PARAMETER(FVector2f, OutputResolution)
+            SHADER_PARAMETER(FVector2f, EyeResolution)
+            SHADER_PARAMETER(float, FovRadians)
+            SHADER_PARAMETER(int32, FaceResolution)
+            SHADER_PARAMETER(int32, bStereo)
+            SHADER_PARAMETER(int32, StereoLayout)
+            SHADER_PARAMETER(int32, bHalfSphere)
+            SHADER_PARAMETER(float, SeamStrength)
+            SHADER_PARAMETER(float, Padding)
+            SHADER_PARAMETER_SAMPLER(SamplerState, FaceSampler)
+            SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float4>, LeftFaces)
+            SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2DArray<float4>, RightFaces)
+            SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputTexture)
+        END_SHADER_PARAMETER_STRUCT()
+
+        static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+        {
+            return true;
+        }
+    };
+
+    IMPLEMENT_GLOBAL_SHADER(FOmniFisheyeCS, "/Plugin/OmniCapture/Private/OmniFisheyeCS.usf", "MainCS", SF_Compute);
+
     class FOmniConvertToYUVLumaCS final : public FGlobalShader
     {
     public:
@@ -218,6 +248,38 @@ namespace
         Direction.X = CosLat * CosLon;
         Direction.Y = SinLat;
         Direction.Z = CosLat * SinLon;
+        return Direction.GetSafeNormal();
+    }
+
+    FVector DirectionFromFisheyePixelCPU(const FIntPoint& Pixel, const FIntPoint& EyeResolution, double FovRadians, bool& bOutValid)
+    {
+        if (EyeResolution.X <= 0 || EyeResolution.Y <= 0)
+        {
+            bOutValid = false;
+            return FVector::ZeroVector;
+        }
+
+        const FVector2D UV((static_cast<double>(Pixel.X) + 0.5) / EyeResolution.X, (static_cast<double>(Pixel.Y) + 0.5) / EyeResolution.Y);
+        FVector2D Normalized = FVector2D(UV.X * 2.0 - 1.0, 1.0 - UV.Y * 2.0);
+
+        const double Radius = Normalized.Size();
+        if (Radius > 1.0)
+        {
+            bOutValid = false;
+            return FVector::ZeroVector;
+        }
+
+        const double HalfFov = FMath::Clamp(FovRadians * 0.5, 0.0, PI);
+        const double Theta = Radius * HalfFov;
+        const double Phi = FMath::Atan2(Normalized.Y, Normalized.X);
+        const double SinTheta = FMath::Sin(Theta);
+
+        FVector Direction;
+        Direction.X = FMath::Cos(Theta);
+        Direction.Y = SinTheta * FMath::Sin(Phi);
+        Direction.Z = SinTheta * FMath::Cos(Phi);
+
+        bOutValid = true;
         return Direction.GetSafeNormal();
     }
 
@@ -652,6 +714,225 @@ namespace
 
         Readback.Unlock();
     }
+
+    void ConvertFisheyeOnRenderThread(const FOmniCaptureSettings Settings, const TArray<FTextureRHIRef, TInlineAllocator<6>> LeftFaces, const TArray<FTextureRHIRef, TInlineAllocator<6>> RightFaces, FOmniCaptureEquirectResult& OutResult)
+    {
+        const int32 FaceResolution = Settings.Resolution;
+        const bool bStereo = Settings.Mode == EOmniCaptureMode::Stereo;
+        const FIntPoint OutputSize = Settings.GetOutputResolution();
+        const FIntPoint EyeSize = Settings.GetFisheyeResolution();
+        const bool bUseLinear = Settings.Gamma == EOmniCaptureGamma::Linear;
+        const bool bHalfSphere = Settings.IsVR180();
+        const float FovRadians = FMath::DegreesToRadians(FMath::Clamp(Settings.FisheyeFOV, 0.0f, 360.0f));
+
+        FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+        FRDGBuilder GraphBuilder(RHICmdList);
+
+        FRDGTextureRef LeftArray = BuildFaceArray(GraphBuilder, LeftFaces, FaceResolution, TEXT("OmniFisheyeLeftFaces"));
+        FRDGTextureRef RightArray = bStereo ? BuildFaceArray(GraphBuilder, RightFaces, FaceResolution, TEXT("OmniFisheyeRightFaces")) : LeftArray;
+
+        if (!LeftArray)
+        {
+            GraphBuilder.Execute();
+            return;
+        }
+
+        FRDGTextureDesc OutputDesc = FRDGTextureDesc::Create2D(OutputSize, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable);
+        FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("OmniFisheyeOutput"));
+
+        FOmniFisheyeCS::FParameters* Parameters = GraphBuilder.AllocParameters<FOmniFisheyeCS::FParameters>();
+        Parameters->OutputResolution = FVector2f(OutputSize.X, OutputSize.Y);
+        Parameters->EyeResolution = FVector2f(EyeSize.X, EyeSize.Y);
+        Parameters->FovRadians = FovRadians;
+        Parameters->FaceResolution = FaceResolution;
+        Parameters->bStereo = bStereo ? 1 : 0;
+        Parameters->StereoLayout = Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? 0 : 1;
+        Parameters->bHalfSphere = bHalfSphere ? 1 : 0;
+        Parameters->SeamStrength = Settings.SeamBlend;
+        Parameters->Padding = 0.0f;
+        Parameters->LeftFaces = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(LeftArray));
+        Parameters->RightFaces = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(RightArray));
+        Parameters->FaceSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+        Parameters->OutputTexture = GraphBuilder.CreateUAV(OutputTexture);
+
+        TShaderMapRef<FOmniFisheyeCS> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel));
+        const FIntVector GroupCount(
+            FMath::DivideAndRoundUp(OutputSize.X, 8),
+            FMath::DivideAndRoundUp(OutputSize.Y, 8),
+            1);
+
+        FComputeShaderUtils::AddPass(GraphBuilder, RDG_EVENT_NAME("OmniCapture::Fisheye"), ComputeShader, Parameters, GroupCount);
+
+        FRDGTextureRef LumaTexture = nullptr;
+        FRDGTextureRef ChromaTexture = nullptr;
+        FRDGTextureRef BGRATexture = nullptr;
+
+        if (Settings.OutputFormat == EOmniOutputFormat::NVENCHardware)
+        {
+            if (Settings.NVENCColorFormat == EOmniCaptureColorFormat::BGRA)
+            {
+                BGRATexture = AddBGRAPackingPass(GraphBuilder, Settings, bUseLinear, OutputSize.X, OutputSize.Y, OutputTexture);
+            }
+            else
+            {
+                AddYUVConversionPasses(GraphBuilder, Settings, bUseLinear, OutputSize.X, OutputSize.Y, OutputTexture, LumaTexture, ChromaTexture);
+            }
+        }
+
+        TRefCountPtr<IPooledRenderTarget> ExtractedOutput;
+        TRefCountPtr<IPooledRenderTarget> ExtractedLuma;
+        TRefCountPtr<IPooledRenderTarget> ExtractedChroma;
+        TRefCountPtr<IPooledRenderTarget> ExtractedBGRA;
+
+        GraphBuilder.QueueTextureExtraction(OutputTexture, &ExtractedOutput);
+        if (LumaTexture)
+        {
+            GraphBuilder.QueueTextureExtraction(LumaTexture, &ExtractedLuma);
+        }
+        if (ChromaTexture)
+        {
+            GraphBuilder.QueueTextureExtraction(ChromaTexture, &ExtractedChroma);
+        }
+        if (BGRATexture)
+        {
+            GraphBuilder.QueueTextureExtraction(BGRATexture, &ExtractedBGRA);
+        }
+
+        GraphBuilder.Execute();
+
+        OutResult.Size = OutputSize;
+        OutResult.bIsLinear = bUseLinear;
+        OutResult.bUsedCPUFallback = false;
+        OutResult.OutputTarget = ExtractedOutput;
+        OutResult.GPUSource = ExtractedOutput;
+        OutResult.Texture.SafeRelease();
+        OutResult.ReadyFence.SafeRelease();
+        OutResult.EncoderPlanes.Reset();
+
+        if (ExtractedOutput.IsValid())
+        {
+            OutResult.Texture = ExtractedOutput->GetRHI();
+        }
+
+        if (Settings.OutputFormat == EOmniOutputFormat::NVENCHardware)
+        {
+            if (Settings.NVENCColorFormat == EOmniCaptureColorFormat::BGRA)
+            {
+                if (ExtractedBGRA.IsValid())
+                {
+                    OutResult.EncoderPlanes.Add(ExtractedBGRA);
+
+                    if (FRHITexture* BGRATextureRHI = ExtractedBGRA->GetRHI())
+                    {
+                        OutResult.Texture = BGRATextureRHI;
+                    }
+                }
+            }
+            else
+            {
+                if (ExtractedLuma.IsValid())
+                {
+                    OutResult.EncoderPlanes.Add(ExtractedLuma);
+                }
+                if (ExtractedChroma.IsValid())
+                {
+                    OutResult.EncoderPlanes.Add(ExtractedChroma);
+                }
+            }
+
+            if (OutResult.Texture.IsValid())
+            {
+                FGPUFenceRHIRef Fence = RHICreateGPUFence(TEXT("OmniFisheyeFence"));
+                if (Fence.IsValid())
+                {
+                    RHICmdList.WriteGPUFence(Fence);
+                    OutResult.ReadyFence = Fence;
+                }
+            }
+        }
+
+        if (!ExtractedOutput.IsValid())
+        {
+            return;
+        }
+
+        FRHITexture* OutputTextureRHI = ExtractedOutput->GetRHI();
+        if (!OutputTextureRHI)
+        {
+            return;
+        }
+
+        FRHIGPUTextureReadback Readback(TEXT("OmniFisheyeReadback"));
+        Readback.EnqueueCopy(RHICmdList, OutputTextureRHI, FResolveRect(0, 0, OutputSize.X, OutputSize.Y));
+        RHICmdList.SubmitCommandsAndFlushGPU();
+
+        while (!Readback.IsReady())
+        {
+            FPlatformProcess::SleepNoStats(0.001f);
+        }
+
+        const uint32 PixelCount = OutputSize.X * OutputSize.Y;
+        const uint32 BytesPerPixel = sizeof(FFloat16Color);
+        int32 RowPitchInPixels = 0;
+        const uint8* RawData = static_cast<const uint8*>(Readback.Lock(RowPitchInPixels));
+
+        if (RawData)
+        {
+            const uint32 RowPitch = RowPitchInPixels > 0 ? static_cast<uint32>(RowPitchInPixels) : static_cast<uint32>(OutputSize.X);
+            if (bUseLinear)
+            {
+                TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutputSize);
+                PixelData->Pixels.SetNum(PixelCount);
+
+                FFloat16Color* DestData = PixelData->Pixels.GetData();
+                const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
+                for (int32 Row = 0; Row < OutputSize.Y; ++Row)
+                {
+                    const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
+                    FMemory::Memcpy(DestData + Row * OutputSize.X, SourceRow, OutputSize.X * BytesPerPixel);
+                }
+
+                OutResult.PixelData = MoveTemp(PixelData);
+
+                OutResult.PreviewPixels.SetNum(PixelCount);
+                const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(OutResult.PixelData.Get());
+                if (FloatData)
+                {
+                    for (uint32 Index = 0; Index < PixelCount; ++Index)
+                    {
+                        const FFloat16Color& Source = FloatData->Pixels[Index];
+                        const FLinearColor Linear(Source.R.GetFloat(), Source.G.GetFloat(), Source.B.GetFloat(), Source.A.GetFloat());
+                        OutResult.PreviewPixels[Index] = Linear.ToFColor(true);
+                    }
+                }
+            }
+            else
+            {
+                TUniquePtr<TImagePixelData<FColor>> PixelData = MakeUnique<TImagePixelData<FColor>>(OutputSize);
+                PixelData->Pixels.SetNum(PixelCount);
+                OutResult.PreviewPixels.SetNum(PixelCount);
+
+                const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
+                for (int32 Row = 0; Row < OutputSize.Y; ++Row)
+                {
+                    const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
+                    FColor* DestRow = PixelData->Pixels.GetData() + Row * OutputSize.X;
+                    for (int32 Column = 0; Column < OutputSize.X; ++Column)
+                    {
+                        const FFloat16Color& Pixel = SourceRow[Column];
+                        const FLinearColor Linear(Pixel.R.GetFloat(), Pixel.G.GetFloat(), Pixel.B.GetFloat(), Pixel.A.GetFloat());
+                        const FColor SRGB = Linear.ToFColor(true);
+                        DestRow[Column] = SRGB;
+                        OutResult.PreviewPixels[Row * OutputSize.X + Column] = SRGB;
+                    }
+                }
+
+                OutResult.PixelData = MoveTemp(PixelData);
+            }
+        }
+
+        Readback.Unlock();
+    }
 }
 
     void ConvertPlanarOnRenderThread(const FOmniCaptureSettings Settings, FTextureRHIRef SourceTexture, const FIntPoint OutputSize, bool bSourceLinear, FOmniCaptureEquirectResult& OutResult)
@@ -860,6 +1141,116 @@ namespace
             OutResult.PixelData = MoveTemp(PixelData);
         }
     }
+
+    void ConvertFisheyeOnCPU(const FOmniCaptureSettings& Settings, const FOmniEyeCapture& LeftEye, const FOmniEyeCapture& RightEye, FOmniCaptureEquirectResult& OutResult)
+    {
+        FCPUCubemap LeftCubemap;
+        if (!BuildCPUCubemap(LeftEye, LeftCubemap))
+        {
+            return;
+        }
+
+        FCPUCubemap RightCubemap;
+        if (Settings.Mode == EOmniCaptureMode::Stereo)
+        {
+            if (!BuildCPUCubemap(RightEye, RightCubemap))
+            {
+                return;
+            }
+        }
+
+        const bool bStereo = Settings.Mode == EOmniCaptureMode::Stereo;
+        const bool bSideBySide = bStereo && Settings.StereoLayout == EOmniCaptureStereoLayout::SideBySide;
+        const int32 FaceResolution = LeftCubemap.Faces[0].Resolution;
+        const FIntPoint OutputSize = Settings.GetOutputResolution();
+        const FIntPoint EyeSize = Settings.GetFisheyeResolution();
+        const bool bHalfSphere = Settings.IsVR180();
+        const double FovRadians = FMath::DegreesToRadians(FMath::Clamp(Settings.FisheyeFOV, 0.0f, 360.0f));
+
+        OutResult.Size = OutputSize;
+        OutResult.bIsLinear = Settings.Gamma == EOmniCaptureGamma::Linear;
+        OutResult.bUsedCPUFallback = true;
+        OutResult.OutputTarget.SafeRelease();
+        OutResult.Texture.SafeRelease();
+        OutResult.ReadyFence.SafeRelease();
+        OutResult.EncoderPlanes.Reset();
+
+        const int32 PixelCount = OutputSize.X * OutputSize.Y;
+        OutResult.PreviewPixels.SetNum(PixelCount);
+
+        auto ProcessPixel = [&](auto& PixelArray, auto ConvertColor)
+        {
+            for (int32 Y = 0; Y < OutputSize.Y; ++Y)
+            {
+                for (int32 X = 0; X < OutputSize.X; ++X)
+                {
+                    const int32 Index = Y * OutputSize.X + X;
+
+                    FIntPoint EyePixel(X, Y);
+                    FIntPoint EyeResolution = EyeSize;
+                    bool bRightEye = false;
+
+                    if (bStereo)
+                    {
+                        if (bSideBySide)
+                        {
+                            const int32 EyeWidth = FMath::Max(1, EyeSize.X);
+                            bRightEye = X >= EyeWidth;
+                            EyePixel.X = X % EyeWidth;
+                            EyeResolution = FIntPoint(EyeWidth, EyeSize.Y);
+                        }
+                        else
+                        {
+                            const int32 EyeHeight = FMath::Max(1, EyeSize.Y);
+                            bRightEye = Y >= EyeHeight;
+                            EyePixel.Y = Y % EyeHeight;
+                            EyeResolution = FIntPoint(EyeSize.X, EyeHeight);
+                        }
+                    }
+
+                    bool bValid = false;
+                    FVector Direction = DirectionFromFisheyePixelCPU(EyePixel, EyeResolution, FovRadians, bValid);
+                    if (!bValid)
+                    {
+                        PixelArray[Index] = ConvertColor(FLinearColor::Transparent);
+                        OutResult.PreviewPixels[Index] = FColor::Transparent;
+                        continue;
+                    }
+
+                    if (bHalfSphere && Direction.X < 0.0f)
+                    {
+                        PixelArray[Index] = ConvertColor(FLinearColor::Transparent);
+                        OutResult.PreviewPixels[Index] = FColor::Transparent;
+                        continue;
+                    }
+
+                    const FLinearColor LinearColor = SampleCubemapCPU(
+                        (bStereo && bRightEye) ? RightCubemap : LeftCubemap,
+                        Direction,
+                        FaceResolution,
+                        Settings.SeamBlend);
+
+                    PixelArray[Index] = ConvertColor(LinearColor);
+                    OutResult.PreviewPixels[Index] = LinearColor.ToFColor(true);
+                }
+            }
+        };
+
+        if (OutResult.bIsLinear)
+        {
+            TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutputSize);
+            PixelData->Pixels.SetNum(PixelCount);
+            ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return FFloat16Color(Linear); });
+            OutResult.PixelData = MoveTemp(PixelData);
+        }
+        else
+        {
+            TUniquePtr<TImagePixelData<FColor>> PixelData = MakeUnique<TImagePixelData<FColor>>(OutputSize);
+            PixelData->Pixels.SetNum(PixelCount);
+            ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return Linear.ToFColor(true); });
+            OutResult.PixelData = MoveTemp(PixelData);
+        }
+    }
 }
 
 FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangular(const FOmniCaptureSettings& Settings, const FOmniEyeCapture& LeftEye, const FOmniEyeCapture& RightEye)
@@ -940,6 +1331,85 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToEquirectangul
     if (!Result.PixelData.IsValid() && (!Result.Texture.IsValid() || !Result.OutputTarget.IsValid()))
     {
         ConvertOnCPU(Settings, LeftEye, RightEye, Result);
+    }
+
+    return Result;
+}
+
+FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToFisheye(const FOmniCaptureSettings& Settings, const FOmniEyeCapture& LeftEye, const FOmniEyeCapture& RightEye)
+{
+    FOmniCaptureEquirectResult Result;
+
+    if (!Settings.IsFisheye() || Settings.Resolution <= 0)
+    {
+        return Result;
+    }
+
+    TArray<FTextureRHIRef, TInlineAllocator<6>> LeftFaces;
+    TArray<FTextureRHIRef, TInlineAllocator<6>> RightFaces;
+
+    for (int32 FaceIndex = 0; FaceIndex < 6; ++FaceIndex)
+    {
+        if (UTextureRenderTarget2D* LeftTarget = LeftEye.Faces[FaceIndex].RenderTarget)
+        {
+            if (FTextureRenderTargetResource* Resource = LeftTarget->GameThread_GetRenderTargetResource())
+            {
+                if (FTextureRHIRef Texture = Resource->GetTextureRHI())
+                {
+                    LeftFaces.Add(Texture);
+                }
+            }
+        }
+
+        if (Settings.Mode == EOmniCaptureMode::Stereo)
+        {
+            if (UTextureRenderTarget2D* RightTarget = RightEye.Faces[FaceIndex].RenderTarget)
+            {
+                if (FTextureRenderTargetResource* Resource = RightTarget->GameThread_GetRenderTargetResource())
+                {
+                    if (FTextureRHIRef Texture = Resource->GetTextureRHI())
+                    {
+                        RightFaces.Add(Texture);
+                    }
+                }
+            }
+        }
+    }
+
+    if (LeftFaces.Num() != 6)
+    {
+        return Result;
+    }
+
+    if (Settings.Mode == EOmniCaptureMode::Stereo && RightFaces.Num() != 6)
+    {
+        return Result;
+    }
+
+    bool bSupportsCompute = GDynamicRHI != nullptr;
+#if defined(GRHISupportsComputeShaders)
+    bSupportsCompute = bSupportsCompute && GRHISupportsComputeShaders;
+#elif defined(GSupportsComputeShaders)
+    bSupportsCompute = bSupportsCompute && GSupportsComputeShaders;
+#else
+    bSupportsCompute = false;
+#endif
+
+    if (bSupportsCompute)
+    {
+        FEvent* CompletionEvent = FPlatformProcess::GetSynchEventFromPool();
+        ENQUEUE_RENDER_COMMAND(OmniCaptureFisheyeConvert)([Settings, LeftFaces, RightFaces, &Result, CompletionEvent](FRHICommandListImmediate&)
+        {
+            ConvertFisheyeOnRenderThread(Settings, LeftFaces, RightFaces.Num() > 0 ? RightFaces : LeftFaces, Result);
+            CompletionEvent->Trigger();
+        });
+
+        CompletionEvent->Wait();
+        FPlatformProcess::ReturnSynchEventToPool(CompletionEvent);
+    }
+    else
+    {
+        ConvertFisheyeOnCPU(Settings, LeftEye, RightEye, Result);
     }
 
     return Result;

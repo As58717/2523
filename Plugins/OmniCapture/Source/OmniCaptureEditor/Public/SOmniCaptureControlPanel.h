@@ -102,6 +102,11 @@ private:
     void ApplyPlanarWidth(int32 NewWidth);
     void ApplyPlanarHeight(int32 NewHeight);
     void ApplyPlanarScale(int32 NewScale);
+    void ApplyFisheyeWidth(int32 NewWidth);
+    void ApplyFisheyeHeight(int32 NewHeight);
+    void ApplyFisheyeFOV(float NewFov);
+    void ApplyFisheyeType(EOmniCaptureFisheyeType Type);
+    void ApplyFisheyeConvert(bool bEnable);
     void ApplyProjection(EOmniCaptureProjection Projection);
     void ApplyOutputFormat(EOmniOutputFormat Format);
     void ApplyCodec(EOmniCaptureCodec Codec);
@@ -130,11 +135,21 @@ private:
     int32 GetPlanarWidthValue() const;
     int32 GetPlanarHeightValue() const;
     int32 GetPlanarScaleValue() const;
+    int32 GetFisheyeWidthValue() const;
+    int32 GetFisheyeHeightValue() const;
+    float GetFisheyeFOVValue() const;
     void HandlePerEyeWidthCommitted(int32 NewValue, ETextCommit::Type CommitType);
     void HandlePerEyeHeightCommitted(int32 NewValue, ETextCommit::Type CommitType);
     void HandlePlanarWidthCommitted(int32 NewValue, ETextCommit::Type CommitType);
     void HandlePlanarHeightCommitted(int32 NewValue, ETextCommit::Type CommitType);
     void HandlePlanarScaleCommitted(int32 NewValue, ETextCommit::Type CommitType);
+    void HandleFisheyeWidthCommitted(int32 NewValue, ETextCommit::Type CommitType);
+    void HandleFisheyeHeightCommitted(int32 NewValue, ETextCommit::Type CommitType);
+    void HandleFisheyeFOVCommitted(float NewValue, ETextCommit::Type CommitType);
+    void HandleFisheyeTypeChanged(TEnumOptionPtr<EOmniCaptureFisheyeType> NewValue, ESelectInfo::Type SelectInfo);
+    TSharedRef<SWidget> GenerateFisheyeTypeOption(TEnumOptionPtr<EOmniCaptureFisheyeType> InValue) const;
+    ECheckBoxState GetFisheyeConvertState() const;
+    void HandleFisheyeConvertChanged(ECheckBoxState NewState);
 
     ECheckBoxState GetMetadataToggleState(EMetadataToggle Toggle) const;
     void HandleMetadataToggleChanged(ECheckBoxState NewState, EMetadataToggle Toggle);
@@ -147,6 +162,7 @@ private:
     TEnumOptionPtr<EOmniCaptureCodec> FindCodecOption(EOmniCaptureCodec Codec) const;
     TEnumOptionPtr<EOmniCaptureColorFormat> FindColorFormatOption(EOmniCaptureColorFormat Format) const;
     TEnumOptionPtr<EOmniCaptureProjection> FindProjectionOption(EOmniCaptureProjection Projection) const;
+    TEnumOptionPtr<EOmniCaptureFisheyeType> FindFisheyeTypeOption(EOmniCaptureFisheyeType Type) const;
     TEnumOptionPtr<EOmniCaptureImageFormat> FindImageFormatOption(EOmniCaptureImageFormat Format) const;
     TEnumOptionPtr<EOmniCapturePNGBitDepth> FindPNGBitDepthOption(EOmniCapturePNGBitDepth BitDepth) const;
 
@@ -212,6 +228,7 @@ private:
     TArray<TEnumOptionPtr<EOmniCaptureCodec>> CodecOptions;
     TArray<TEnumOptionPtr<EOmniCaptureColorFormat>> ColorFormatOptions;
     TArray<TEnumOptionPtr<EOmniCaptureProjection>> ProjectionOptions;
+    TArray<TEnumOptionPtr<EOmniCaptureFisheyeType>> FisheyeTypeOptions;
     TArray<TEnumOptionPtr<EOmniCaptureImageFormat>> ImageFormatOptions;
     TArray<TEnumOptionPtr<EOmniCapturePNGBitDepth>> PNGBitDepthOptions;
 
@@ -220,6 +237,7 @@ private:
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureCodec>>> CodecCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureColorFormat>>> ColorFormatCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureProjection>>> ProjectionCombo;
+    TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureFisheyeType>>> FisheyeTypeCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureImageFormat>>> ImageFormatCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCapturePNGBitDepth>>> PNGBitDepthCombo;
 

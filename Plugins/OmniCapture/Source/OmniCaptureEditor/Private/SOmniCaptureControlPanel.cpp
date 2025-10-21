@@ -86,9 +86,23 @@ namespace
             return LOCTEXT("ProjectionFullDome", "Full Dome");
         case EOmniCaptureProjection::SphericalMirror:
             return LOCTEXT("ProjectionSphericalMirror", "Spherical Mirror");
+        case EOmniCaptureProjection::Fisheye:
+            return LOCTEXT("ProjectionFisheye", "Fisheye");
         case EOmniCaptureProjection::Equirectangular:
         default:
             return LOCTEXT("ProjectionEquirect", "Equirectangular");
+        }
+    }
+
+    FText FisheyeTypeToText(EOmniCaptureFisheyeType Type)
+    {
+        switch (Type)
+        {
+        case EOmniCaptureFisheyeType::Hemispherical:
+            return LOCTEXT("FisheyeTypeHemi", "Hemispherical (180°)");
+        case EOmniCaptureFisheyeType::OmniDirectional:
+        default:
+            return LOCTEXT("FisheyeTypeOmni", "Omni-directional (360°)");
         }
     }
 
@@ -196,10 +210,15 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
 
     ProjectionOptions.Reset();
     ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::Equirectangular));
+    ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::Fisheye));
     ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::Planar2D));
     ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::Cylindrical));
     ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::FullDome));
     ProjectionOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureProjection>>(EOmniCaptureProjection::SphericalMirror));
+
+    FisheyeTypeOptions.Reset();
+    FisheyeTypeOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureFisheyeType>>(EOmniCaptureFisheyeType::Hemispherical));
+    FisheyeTypeOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureFisheyeType>>(EOmniCaptureFisheyeType::OmniDirectional));
 
     ImageFormatOptions.Reset();
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::PNG));
@@ -414,6 +433,118 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                     .Delta(64)
                     .Value(this, &SOmniCaptureControlPanel::GetPerEyeHeightValue)
                     .OnValueCommitted(this, &SOmniCaptureControlPanel::HandlePerEyeHeightCommitted)
+                ]
+            ]
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            SNew(SVerticalBox)
+            .Visibility_Lambda([this]()
+            {
+                return GetSettingsSnapshot().Projection == EOmniCaptureProjection::Fisheye ? EVisibility::Visible : EVisibility::Collapsed;
+            })
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SNew(SGridPanel)
+                .FillColumn(1, 1.f)
+                + SGridPanel::Slot(0, 0)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("FisheyeWidthLabel", "Output Width"))
+                ]
+                + SGridPanel::Slot(1, 0)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(256)
+                    .MaxValue(32768)
+                    .Delta(64)
+                    .Value(this, &SOmniCaptureControlPanel::GetFisheyeWidthValue)
+                    .OnValueCommitted(this, &SOmniCaptureControlPanel::HandleFisheyeWidthCommitted)
+                ]
+                + SGridPanel::Slot(0, 1)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("FisheyeHeightLabel", "Output Height"))
+                ]
+                + SGridPanel::Slot(1, 1)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(256)
+                    .MaxValue(32768)
+                    .Delta(64)
+                    .Value(this, &SOmniCaptureControlPanel::GetFisheyeHeightValue)
+                    .OnValueCommitted(this, &SOmniCaptureControlPanel::HandleFisheyeHeightCommitted)
+                ]
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.f, 6.f, 0.f, 0.f)
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("FisheyeFOVLabel", "Field of View"))
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(8.f, 0.f, 0.f, 0.f)
+                [
+                    SNew(SSpinBox<float>)
+                    .MinValue(90.f)
+                    .MaxValue(360.f)
+                    .Delta(1.f)
+                    .Value(this, &SOmniCaptureControlPanel::GetFisheyeFOVValue)
+                    .OnValueCommitted(this, &SOmniCaptureControlPanel::HandleFisheyeFOVCommitted)
+                ]
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.f, 6.f, 0.f, 0.f)
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("FisheyeTypeLabel", "Fisheye Type"))
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(8.f, 0.f, 0.f, 0.f)
+                [
+                    SAssignNew(FisheyeTypeCombo, SComboBox<TEnumOptionPtr<EOmniCaptureFisheyeType>>)
+                    .OptionsSource(&FisheyeTypeOptions)
+                    .OnGenerateWidget(this, &SOmniCaptureControlPanel::GenerateFisheyeTypeOption)
+                    .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleFisheyeTypeChanged)
+                    [
+                        SNew(STextBlock)
+                        .Text_Lambda([this]()
+                        {
+                            return FisheyeTypeToText(GetSettingsSnapshot().FisheyeType);
+                        })
+                    ]
+                ]
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.f, 6.f, 0.f, 0.f)
+            [
+                SNew(SCheckBox)
+                .IsChecked(this, &SOmniCaptureControlPanel::GetFisheyeConvertState)
+                .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleFisheyeConvertChanged)
+                .Content()
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("FisheyeConvertLabel", "Convert to Equirectangular output"))
+                    .AutoWrapText(true)
                 ]
             ]
         ]
@@ -1972,6 +2103,10 @@ void SOmniCaptureControlPanel::RefreshConfigurationSummary()
     {
         ProjectionCombo->SetSelectedItem(FindProjectionOption(Snapshot.Projection));
     }
+    if (FisheyeTypeCombo.IsValid())
+    {
+        FisheyeTypeCombo->SetSelectedItem(FindFisheyeTypeOption(Snapshot.FisheyeType));
+    }
     if (ImageFormatCombo.IsValid())
     {
         ImageFormatCombo->SetSelectedItem(FindImageFormatOption(Snapshot.ImageFormat));
@@ -2021,6 +2156,10 @@ void SOmniCaptureControlPanel::ApplyVRMode(bool bVR180)
     ModifyCaptureSettings([bVR180](FOmniCaptureSettings& Settings)
     {
         Settings.Coverage = bVR180 ? EOmniCaptureCoverage::HalfSphere : EOmniCaptureCoverage::FullSphere;
+        if (Settings.IsFisheye())
+        {
+            Settings.FisheyeType = bVR180 ? EOmniCaptureFisheyeType::Hemispherical : EOmniCaptureFisheyeType::OmniDirectional;
+        }
     });
 }
 
@@ -2096,6 +2235,53 @@ void SOmniCaptureControlPanel::ApplyPlanarScale(int32 NewScale)
     ModifyCaptureSettings([NewScale](FOmniCaptureSettings& Settings)
     {
         Settings.PlanarIntegerScale = FMath::Clamp(NewScale, 1, 16);
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyFisheyeWidth(int32 NewWidth)
+{
+    ModifyCaptureSettings([NewWidth](FOmniCaptureSettings& Settings)
+    {
+        const int32 Alignment = Settings.GetEncoderAlignmentRequirement();
+        const int32 Clamped = FMath::Clamp(NewWidth, 256, 32768);
+        Settings.FisheyeResolution.X = AlignDimensionUI(Clamped, Alignment);
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyFisheyeHeight(int32 NewHeight)
+{
+    ModifyCaptureSettings([NewHeight](FOmniCaptureSettings& Settings)
+    {
+        const int32 Alignment = Settings.GetEncoderAlignmentRequirement();
+        const int32 Clamped = FMath::Clamp(NewHeight, 256, 32768);
+        Settings.FisheyeResolution.Y = AlignDimensionUI(Clamped, Alignment);
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyFisheyeFOV(float NewFov)
+{
+    ModifyCaptureSettings([NewFov](FOmniCaptureSettings& Settings)
+    {
+        Settings.FisheyeFOV = FMath::Clamp(NewFov, 90.0f, 360.0f);
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyFisheyeType(EOmniCaptureFisheyeType Type)
+{
+    ModifyCaptureSettings([Type](FOmniCaptureSettings& Settings)
+    {
+        Settings.FisheyeType = Type;
+        Settings.Coverage = (Type == EOmniCaptureFisheyeType::Hemispherical)
+            ? EOmniCaptureCoverage::HalfSphere
+            : EOmniCaptureCoverage::FullSphere;
+    });
+}
+
+void SOmniCaptureControlPanel::ApplyFisheyeConvert(bool bEnable)
+{
+    ModifyCaptureSettings([bEnable](FOmniCaptureSettings& Settings)
+    {
+        Settings.bFisheyeConvertToEquirect = bEnable;
     });
 }
 
@@ -2247,6 +2433,14 @@ TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateProjectionOption(TEnumOpti
     return SNew(STextBlock).Text(ProjectionToText(Projection));
 }
 
+TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateFisheyeTypeOption(TEnumOptionPtr<EOmniCaptureFisheyeType> InValue) const
+{
+    const EOmniCaptureFisheyeType Type = InValue.IsValid()
+        ? static_cast<EOmniCaptureFisheyeType>(InValue->GetValue())
+        : EOmniCaptureFisheyeType::Hemispherical;
+    return SNew(STextBlock).Text(FisheyeTypeToText(Type));
+}
+
 int32 SOmniCaptureControlPanel::GetPerEyeWidthValue() const
 {
     return GetSettingsSnapshot().GetPerEyeOutputResolution().X;
@@ -2279,6 +2473,21 @@ int32 SOmniCaptureControlPanel::GetPlanarScaleValue() const
     return GetSettingsSnapshot().PlanarIntegerScale;
 }
 
+int32 SOmniCaptureControlPanel::GetFisheyeWidthValue() const
+{
+    return GetSettingsSnapshot().FisheyeResolution.X;
+}
+
+int32 SOmniCaptureControlPanel::GetFisheyeHeightValue() const
+{
+    return GetSettingsSnapshot().FisheyeResolution.Y;
+}
+
+float SOmniCaptureControlPanel::GetFisheyeFOVValue() const
+{
+    return GetSettingsSnapshot().FisheyeFOV;
+}
+
 void SOmniCaptureControlPanel::HandlePerEyeWidthCommitted(int32 NewValue, ETextCommit::Type CommitType)
 {
     ApplyPerEyeWidth(FMath::Max(1, NewValue));
@@ -2302,6 +2511,39 @@ void SOmniCaptureControlPanel::HandlePlanarHeightCommitted(int32 NewValue, EText
 void SOmniCaptureControlPanel::HandlePlanarScaleCommitted(int32 NewValue, ETextCommit::Type CommitType)
 {
     ApplyPlanarScale(FMath::Max(1, NewValue));
+}
+
+void SOmniCaptureControlPanel::HandleFisheyeTypeChanged(TEnumOptionPtr<EOmniCaptureFisheyeType> NewValue, ESelectInfo::Type SelectInfo)
+{
+    if (NewValue.IsValid())
+    {
+        ApplyFisheyeType(static_cast<EOmniCaptureFisheyeType>(NewValue->GetValue()));
+    }
+}
+
+ECheckBoxState SOmniCaptureControlPanel::GetFisheyeConvertState() const
+{
+    return GetSettingsSnapshot().bFisheyeConvertToEquirect ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+}
+
+void SOmniCaptureControlPanel::HandleFisheyeConvertChanged(ECheckBoxState NewState)
+{
+    ApplyFisheyeConvert(NewState == ECheckBoxState::Checked);
+}
+
+void SOmniCaptureControlPanel::HandleFisheyeWidthCommitted(int32 NewValue, ETextCommit::Type CommitType)
+{
+    ApplyFisheyeWidth(FMath::Max(256, NewValue));
+}
+
+void SOmniCaptureControlPanel::HandleFisheyeHeightCommitted(int32 NewValue, ETextCommit::Type CommitType)
+{
+    ApplyFisheyeHeight(FMath::Max(256, NewValue));
+}
+
+void SOmniCaptureControlPanel::HandleFisheyeFOVCommitted(float NewValue, ETextCommit::Type CommitType)
+{
+    ApplyFisheyeFOV(NewValue);
 }
 
 ECheckBoxState SOmniCaptureControlPanel::GetMetadataToggleState(EMetadataToggle Toggle) const
@@ -2418,6 +2660,18 @@ TEnumOptionPtr<EOmniCaptureProjection> SOmniCaptureControlPanel::FindProjectionO
         }
     }
     return ProjectionOptions.Num() > 0 ? ProjectionOptions[0] : nullptr;
+}
+
+TEnumOptionPtr<EOmniCaptureFisheyeType> SOmniCaptureControlPanel::FindFisheyeTypeOption(EOmniCaptureFisheyeType Type) const
+{
+    for (const TEnumOptionPtr<EOmniCaptureFisheyeType>& Option : FisheyeTypeOptions)
+    {
+        if (Option.IsValid() && static_cast<EOmniCaptureFisheyeType>(Option->GetValue()) == Type)
+        {
+            return Option;
+        }
+    }
+    return FisheyeTypeOptions.Num() > 0 ? FisheyeTypeOptions[0] : nullptr;
 }
 
 TEnumOptionPtr<EOmniCaptureImageFormat> SOmniCaptureControlPanel::FindImageFormatOption(EOmniCaptureImageFormat Format) const

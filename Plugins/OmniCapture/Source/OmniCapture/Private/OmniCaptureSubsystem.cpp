@@ -222,12 +222,14 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     const TCHAR* LayoutLabel = ActiveSettings.Mode == EOmniCaptureMode::Stereo
         ? (ActiveSettings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? TEXT("Top-Bottom") : TEXT("Side-by-Side"))
         : TEXT("Mono");
-    const TCHAR* ProjectionLabel = ActiveSettings.IsPlanar() ? TEXT("Planar") : TEXT("Equirect");
+    const TCHAR* ProjectionLabel = ActiveSettings.IsPlanar()
+        ? TEXT("Planar")
+        : (ActiveSettings.IsFisheye() ? TEXT("Fisheye") : TEXT("Equirect"));
     UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Begin capture %s %s (%dx%d -> %dx%d, %s %s) (%s, %s, %s) -> %s"),
         ActiveSettings.Mode == EOmniCaptureMode::Stereo ? TEXT("Stereo") : TEXT("Mono"),
         CoverageLabel,
-        ActiveSettings.IsPlanar() ? ActiveSettings.PlanarResolution.X : ActiveSettings.Resolution,
-        ActiveSettings.IsPlanar() ? ActiveSettings.PlanarResolution.Y : ActiveSettings.Resolution,
+        ActiveSettings.IsPlanar() ? ActiveSettings.PlanarResolution.X : (ActiveSettings.IsFisheye() ? ActiveSettings.FisheyeResolution.X : ActiveSettings.Resolution),
+        ActiveSettings.IsPlanar() ? ActiveSettings.PlanarResolution.Y : (ActiveSettings.IsFisheye() ? ActiveSettings.FisheyeResolution.Y : ActiveSettings.Resolution),
         OutputDimensions.X,
         OutputDimensions.Y,
         ProjectionLabel,
@@ -376,9 +378,22 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
 
     FlushRenderingCommands();
 
-    FOmniCaptureEquirectResult Result = StillSettings.IsPlanar()
-        ? FOmniCaptureEquirectConverter::ConvertToPlanar(StillSettings, LeftEye)
-        : FOmniCaptureEquirectConverter::ConvertToEquirectangular(StillSettings, LeftEye, RightEye);
+    auto ConvertFrame = [](const FOmniCaptureSettings& CaptureSettings, const FOmniEyeCapture& Left, const FOmniEyeCapture& Right)
+    {
+        if (CaptureSettings.IsPlanar())
+        {
+            return FOmniCaptureEquirectConverter::ConvertToPlanar(CaptureSettings, Left);
+        }
+
+        if (CaptureSettings.IsFisheye() && !CaptureSettings.ShouldConvertFisheyeToEquirect())
+        {
+            return FOmniCaptureEquirectConverter::ConvertToFisheye(CaptureSettings, Left, Right);
+        }
+
+        return FOmniCaptureEquirectConverter::ConvertToEquirectangular(CaptureSettings, Left, Right);
+    };
+
+    FOmniCaptureEquirectResult Result = ConvertFrame(StillSettings, LeftEye, RightEye);
 
     World->DestroyActor(TempRig);
 
@@ -1031,9 +1046,22 @@ void UOmniCaptureSubsystem::CaptureFrame()
 
     FlushRenderingCommands();
 
-    FOmniCaptureEquirectResult ConversionResult = ActiveSettings.IsPlanar()
-        ? FOmniCaptureEquirectConverter::ConvertToPlanar(ActiveSettings, LeftEye)
-        : FOmniCaptureEquirectConverter::ConvertToEquirectangular(ActiveSettings, LeftEye, RightEye);
+    auto ConvertActiveFrame = [](const FOmniCaptureSettings& CaptureSettings, const FOmniEyeCapture& Left, const FOmniEyeCapture& Right)
+    {
+        if (CaptureSettings.IsPlanar())
+        {
+            return FOmniCaptureEquirectConverter::ConvertToPlanar(CaptureSettings, Left);
+        }
+
+        if (CaptureSettings.IsFisheye() && !CaptureSettings.ShouldConvertFisheyeToEquirect())
+        {
+            return FOmniCaptureEquirectConverter::ConvertToFisheye(CaptureSettings, Left, Right);
+        }
+
+        return FOmniCaptureEquirectConverter::ConvertToEquirectangular(CaptureSettings, Left, Right);
+    };
+
+    FOmniCaptureEquirectResult ConversionResult = ConvertActiveFrame(ActiveSettings, LeftEye, RightEye);
     const bool bRequiresGPU = ActiveSettings.OutputFormat == EOmniOutputFormat::NVENCHardware;
     if (!ConversionResult.PixelData.IsValid())
     {

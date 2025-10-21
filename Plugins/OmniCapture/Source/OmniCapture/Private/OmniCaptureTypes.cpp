@@ -88,9 +88,56 @@ FIntPoint FOmniCaptureSettings::GetPlanarResolution() const
     return Base;
 }
 
+FIntPoint FOmniCaptureSettings::GetFisheyeResolution() const
+{
+    FIntPoint Base = FisheyeResolution;
+    Base.X = FMath::Max(2, Base.X);
+    Base.Y = FMath::Max(2, Base.Y);
+
+    const int32 Alignment = GetEncoderAlignmentRequirement();
+    Base = AlignPoint(Base, Alignment);
+
+    Base.X = FMath::Max(2, Base.X);
+    Base.Y = FMath::Max(2, Base.Y);
+
+    return Base;
+}
+
 FIntPoint FOmniCaptureSettings::GetOutputResolution() const
 {
-    return IsPlanar() ? GetPlanarResolution() : GetEquirectResolution();
+    if (IsPlanar())
+    {
+        return GetPlanarResolution();
+    }
+
+    if (IsFisheye())
+    {
+        if (ShouldConvertFisheyeToEquirect())
+        {
+            return GetEquirectResolution();
+        }
+
+        const FIntPoint EyeResolution = GetFisheyeResolution();
+        FIntPoint Output = EyeResolution;
+
+        if (IsStereo())
+        {
+            if (StereoLayout == EOmniCaptureStereoLayout::SideBySide)
+            {
+                Output.X = AlignDimension(EyeResolution.X * 2, GetEncoderAlignmentRequirement());
+            }
+            else
+            {
+                Output.Y = AlignDimension(EyeResolution.Y * 2, GetEncoderAlignmentRequirement());
+            }
+        }
+
+        Output.X = FMath::Max(2, Output.X);
+        Output.Y = FMath::Max(2, Output.Y);
+        return Output;
+    }
+
+    return GetEquirectResolution();
 }
 
 FIntPoint FOmniCaptureSettings::GetPerEyeOutputResolution() const
@@ -98,6 +145,27 @@ FIntPoint FOmniCaptureSettings::GetPerEyeOutputResolution() const
     if (IsPlanar())
     {
         return GetPlanarResolution();
+    }
+
+    if (IsFisheye())
+    {
+        if (ShouldConvertFisheyeToEquirect())
+        {
+            const FIntPoint Output = GetEquirectResolution();
+            if (!IsStereo())
+            {
+                return Output;
+            }
+
+            if (StereoLayout == EOmniCaptureStereoLayout::SideBySide)
+            {
+                return FIntPoint(FMath::Max(1, Output.X / 2), Output.Y);
+            }
+
+            return FIntPoint(Output.X, FMath::Max(1, Output.Y / 2));
+        }
+
+        return GetFisheyeResolution();
     }
 
     const FIntPoint Output = GetEquirectResolution();
@@ -117,6 +185,11 @@ FIntPoint FOmniCaptureSettings::GetPerEyeOutputResolution() const
 bool FOmniCaptureSettings::IsStereo() const
 {
     return Mode == EOmniCaptureMode::Stereo;
+}
+
+bool FOmniCaptureSettings::IsFisheye() const
+{
+    return Projection == EOmniCaptureProjection::Fisheye;
 }
 
 bool FOmniCaptureSettings::IsPlanar() const
@@ -142,6 +215,16 @@ bool FOmniCaptureSettings::IsSphericalMirror() const
 bool FOmniCaptureSettings::IsVR180() const
 {
     return Coverage == EOmniCaptureCoverage::HalfSphere;
+}
+
+bool FOmniCaptureSettings::UseDualFisheyeLayout() const
+{
+    return IsFisheye() && IsStereo();
+}
+
+bool FOmniCaptureSettings::ShouldConvertFisheyeToEquirect() const
+{
+    return bFisheyeConvertToEquirect && IsFisheye();
 }
 
 FString FOmniCaptureSettings::GetStereoModeMetadataTag() const
@@ -196,6 +279,11 @@ int32 FOmniCaptureSettings::GetEncoderAlignmentRequirement() const
 
 float FOmniCaptureSettings::GetHorizontalFOVDegrees() const
 {
+    if (IsFisheye())
+    {
+        return FMath::Clamp(FisheyeFOV, 0.0f, 360.0f);
+    }
+
     if (IsPlanar())
     {
         return 90.0f;
@@ -221,6 +309,11 @@ float FOmniCaptureSettings::GetHorizontalFOVDegrees() const
 
 float FOmniCaptureSettings::GetVerticalFOVDegrees() const
 {
+    if (IsFisheye())
+    {
+        return FMath::Clamp(FisheyeFOV, 0.0f, 360.0f);
+    }
+
     if (IsPlanar())
     {
         return 90.0f;
