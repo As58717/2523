@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "OmniCaptureTypes.h"
 #include "Async/Future.h"
+#include "Templates/Function.h"
 
 class OMNICAPTURE_API FOmniCaptureImageWriter
 {
@@ -19,6 +20,7 @@ public:
 private:
     bool WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear) const;
     bool WritePNGRaw(const FString& FilePath, const FIntPoint& Size, const void* RawData, int64 RawSizeInBytes, ERGBFormat Format, int32 BitDepth) const;
+    bool WritePNGWithRowSource(const FString& FilePath, const FIntPoint& Size, ERGBFormat Format, int32 BitDepth, TFunctionRef<void(int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)> PrepareRows) const;
     bool WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WritePNGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
     bool WriteBMP(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
