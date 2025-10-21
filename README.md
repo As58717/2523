@@ -8,12 +8,13 @@ OmniCapture extends Unreal Engine with a turnkey panoramic capture workflow that
 | --- | --- |
 | **Planar 2D** | Traditional frame capture for flat deliverables. |
 | **Equirectangular 360°** | Full-sphere capture for monoscopic or stereoscopic content. |
+| **Fisheye 180° / 360°** | GPU-accelerated fisheye projection with configurable FOV, stereo layouts, and optional equirectangular conversion for VR platforms. |
 | **VR180** | Half-sphere output with the correct VR metadata baked in. |
 | **Cylindrical** | Wraparound projection that preserves vertical framing for dome blends. |
 | **Full Dome** | 180° domed capture optimized for planetarium style playback. |
 | **Spherical Mirror** | Wide FOV mapping for mirror rigs and projector domes. |
 
-Switch projections in the OmniCapture control panel—the panel automatically exposes the new cylindrical, full-dome, and spherical-mirror choices alongside the original planar and equirectangular presets. 【F:Plugins/OmniCapture/Source/OmniCaptureEditor/Private/SOmniCaptureControlPanel.cpp†L67-L115】【F:Plugins/OmniCapture/Source/OmniCapture/Private/OmniCaptureTypes.cpp†L60-L124】
+Switch projections in the OmniCapture control panel—the panel automatically exposes the new fisheye, cylindrical, full-dome, and spherical-mirror choices alongside the original planar and equirectangular presets. The fisheye panel surfaces 180°/360° presets, per-eye resolution controls, GPU shader toggles, and a one-click equirect conversion option when you need flat deliverables. 【F:Plugins/OmniCapture/Source/OmniCaptureEditor/Private/SOmniCaptureControlPanel.cpp†L377-L478】【F:Plugins/OmniCapture/Source/OmniCapture/Public/OmniCaptureTypes.h†L94-L151】【F:Plugins/OmniCapture/Source/OmniCapture/Private/OmniCaptureEquirectConverter.cpp†L1081-L1454】【F:Plugins/OmniCapture/Shaders/Private/OmniFisheyeCS.usf†L1-L112】
 
 ## Stereo ergonomics
 

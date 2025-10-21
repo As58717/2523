@@ -17,10 +17,18 @@ UENUM(BlueprintType)
 enum class EOmniCaptureProjection : uint8
 {
         Equirectangular,
+        Fisheye,
         Planar2D,
         Cylindrical,
         FullDome,
         SphericalMirror
+};
+
+UENUM(BlueprintType)
+enum class EOmniCaptureFisheyeType : uint8
+{
+        Hemispherical,
+        OmniDirectional
 };
 
 UENUM(BlueprintType)
@@ -107,6 +115,10 @@ struct OMNICAPTURE_API FOmniCaptureSettings
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 1024, UIMin = 1024)) int32 Resolution = 4096;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 16, UIMin = 64)) FIntPoint PlanarResolution = FIntPoint(3840, 2160);
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 1, UIMin = 1)) int32 PlanarIntegerScale = 1;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture|Fisheye", meta = (EditCondition = "Projection == EOmniCaptureProjection::Fisheye")) EOmniCaptureFisheyeType FisheyeType = EOmniCaptureFisheyeType::Hemispherical;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture|Fisheye", meta = (ClampMin = 90.0, ClampMax = 360.0, UIMin = 90.0, UIMax = 360.0, EditCondition = "Projection == EOmniCaptureProjection::Fisheye")) float FisheyeFOV = 180.0f;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture|Fisheye", meta = (ClampMin = 256, UIMin = 256, EditCondition = "Projection == EOmniCaptureProjection::Fisheye")) FIntPoint FisheyeResolution = FIntPoint(4096, 4096);
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture|Fisheye", meta = (EditCondition = "Projection == EOmniCaptureProjection::Fisheye")) bool bFisheyeConvertToEquirect = false;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, UIMin = 0.0)) float TargetFrameRate = 60.0f;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") EOmniCaptureGamma Gamma = EOmniCaptureGamma::SRGB;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") bool bEnablePreviewWindow = true;
@@ -152,14 +164,18 @@ struct OMNICAPTURE_API FOmniCaptureSettings
 
         FIntPoint GetEquirectResolution() const;
         FIntPoint GetPlanarResolution() const;
+        FIntPoint GetFisheyeResolution() const;
         FIntPoint GetOutputResolution() const;
         FIntPoint GetPerEyeOutputResolution() const;
         bool IsStereo() const;
         bool IsVR180() const;
+        bool IsFisheye() const;
         bool IsPlanar() const;
         bool IsCylindrical() const;
         bool IsFullDome() const;
         bool IsSphericalMirror() const;
+        bool UseDualFisheyeLayout() const;
+        bool ShouldConvertFisheyeToEquirect() const;
         FString GetStereoModeMetadataTag() const;
         int32 GetEncoderAlignmentRequirement() const;
         float GetHorizontalFOVDegrees() const;
