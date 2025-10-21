@@ -37,6 +37,8 @@ public class OmniCapture : ModuleRules
             "Renderer"
         });
 
+        AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib", "UElibPNG");
+
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {
             PrivateDependencyModuleNames.Add("D3D12RHI");

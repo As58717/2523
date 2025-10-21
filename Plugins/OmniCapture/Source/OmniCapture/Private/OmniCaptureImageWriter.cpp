@@ -9,6 +9,10 @@
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 
+THIRD_PARTY_INCLUDES_START
+#include "png.h"
+THIRD_PARTY_INCLUDES_END
+
 namespace
 {
     constexpr int32 DefaultJpegQuality = 85;
@@ -24,6 +28,73 @@ namespace
         FString Normalized = InPath;
         FPaths::MakeStandardFilename(Normalized);
         return Normalized;
+    }
+
+    int32 GetChannelCountForFormat(ERGBFormat Format)
+    {
+        switch (Format)
+        {
+        case ERGBFormat::Gray:
+        case ERGBFormat::GrayF:
+            return 1;
+        case ERGBFormat::RGB:
+        case ERGBFormat::BGR:
+        case ERGBFormat::RGBF:
+            return 3;
+        case ERGBFormat::RGBA:
+        case ERGBFormat::BGRA:
+        case ERGBFormat::RGBAF:
+        case ERGBFormat::BGRAF:
+            return 4;
+        default:
+            return 0;
+        }
+    }
+
+    int32 GetPngColorType(ERGBFormat Format)
+    {
+        switch (Format)
+        {
+        case ERGBFormat::Gray:
+        case ERGBFormat::GrayF:
+            return PNG_COLOR_TYPE_GRAY;
+        case ERGBFormat::RGB:
+        case ERGBFormat::BGR:
+        case ERGBFormat::RGBF:
+            return PNG_COLOR_TYPE_RGB;
+        case ERGBFormat::RGBA:
+        case ERGBFormat::BGRA:
+        case ERGBFormat::RGBAF:
+        case ERGBFormat::BGRAF:
+            return PNG_COLOR_TYPE_RGBA;
+        default:
+            return -1;
+        }
+    }
+
+    void PngWriteDataCallback(png_structp PngPtr, png_bytep Data, png_size_t Length)
+    {
+        FArchive* Archive = static_cast<FArchive*>(png_get_io_ptr(PngPtr));
+        if (!Archive)
+        {
+            png_error(PngPtr, "Invalid archive writer");
+            return;
+        }
+
+        Archive->Serialize(Data, Length);
+        if (Archive->IsError())
+        {
+            png_error(PngPtr, "Failed to write PNG data");
+        }
+    }
+
+    void PngFlushCallback(png_structp PngPtr)
+    {
+        FArchive* Archive = static_cast<FArchive*>(png_get_io_ptr(PngPtr));
+        if (Archive)
+        {
+            Archive->Flush();
+        }
     }
 }
 
@@ -158,25 +229,140 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
 
 bool FOmniCaptureImageWriter::WritePNGRaw(const FString& FilePath, const FIntPoint& Size, const void* RawData, int64 RawSizeInBytes, ERGBFormat Format, int32 BitDepth) const
 {
-    const TSharedPtr<IImageWrapper> ImageWrapper = CreateImageWrapper(EImageFormat::PNG);
-    if (!ImageWrapper.IsValid())
+    const int32 Channels = GetChannelCountForFormat(Format);
+    if (Channels <= 0 || Size.X <= 0 || Size.Y <= 0)
     {
         return false;
     }
 
-    if (!ImageWrapper->SetRaw(static_cast<const uint8*>(RawData), RawSizeInBytes, Size.X, Size.Y, Format, BitDepth))
+    const int32 BytesPerChannel = BitDepth / 8;
+    if (BytesPerChannel <= 0)
     {
         return false;
     }
 
-    const TArray64<uint8> CompressedData = ImageWrapper->GetCompressed();
-    if (CompressedData.Num() == 0)
+    const int64 BytesPerRow = static_cast<int64>(Size.X) * Channels * BytesPerChannel;
+    if (BytesPerRow <= 0)
+    {
+        return false;
+    }
+
+    if (RawSizeInBytes < BytesPerRow * Size.Y)
+    {
+        return false;
+    }
+
+    const uint8* BasePtr = static_cast<const uint8*>(RawData);
+    auto PrepareRows = [BasePtr, BytesPerRow](int32 RowStart, int32 RowCount, int64, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
+    {
+        (void)TempBuffer;
+        for (int32 RowIndex = 0; RowIndex < RowCount; ++RowIndex)
+        {
+            RowPointers[RowIndex] = const_cast<uint8*>(BasePtr + (static_cast<int64>(RowStart + RowIndex) * BytesPerRow));
+        }
+    };
+
+    return WritePNGWithRowSource(FilePath, Size, Format, BitDepth, PrepareRows);
+}
+
+bool FOmniCaptureImageWriter::WritePNGWithRowSource(const FString& FilePath, const FIntPoint& Size, ERGBFormat Format, int32 BitDepth, TFunctionRef<void(int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)> PrepareRows) const
+{
+#if WITH_LIBPNG
+    const int32 Channels = GetChannelCountForFormat(Format);
+    if (Channels <= 0 || BitDepth <= 0 || Size.X <= 0 || Size.Y <= 0)
+    {
+        return false;
+    }
+
+    const int32 ColorType = GetPngColorType(Format);
+    if (ColorType < 0)
+    {
+        return false;
+    }
+
+    const int32 BytesPerChannel = BitDepth / 8;
+    if (BytesPerChannel <= 0)
+    {
+        return false;
+    }
+
+    const int64 BytesPerRow = static_cast<int64>(Size.X) * Channels * BytesPerChannel;
+    if (BytesPerRow <= 0)
     {
         return false;
     }
 
     IFileManager::Get().Delete(*FilePath, false, true, false);
-    return FFileHelper::SaveArrayToFile(CompressedData, *FilePath);
+    TUniquePtr<FArchive> Archive(IFileManager::Get().CreateFileWriter(*FilePath));
+    if (!Archive.IsValid())
+    {
+        return false;
+    }
+
+    png_structp PngPtr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+    if (!PngPtr)
+    {
+        Archive->Close();
+        return false;
+    }
+
+    png_infop InfoPtr = png_create_info_struct(PngPtr);
+    if (!InfoPtr)
+    {
+        png_destroy_write_struct(&PngPtr, nullptr);
+        Archive->Close();
+        return false;
+    }
+
+    if (setjmp(png_jmpbuf(PngPtr)))
+    {
+        png_destroy_write_struct(&PngPtr, &InfoPtr);
+        Archive->Close();
+        IFileManager::Get().Delete(*FilePath, false, true, true);
+        return false;
+    }
+
+    png_set_write_fn(PngPtr, Archive.Get(), PngWriteDataCallback, PngFlushCallback);
+    png_set_IHDR(PngPtr, InfoPtr, Size.X, Size.Y, BitDepth, ColorType, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+
+    if (BitDepth == 16)
+    {
+        png_set_swap(PngPtr);
+    }
+
+    if (Format == ERGBFormat::BGRA || Format == ERGBFormat::BGR || Format == ERGBFormat::BGRAF)
+    {
+        png_set_bgr(PngPtr);
+    }
+
+    png_write_info(PngPtr, InfoPtr);
+
+    const int64 DesiredChunkBytes = 64ll * 1024ll * 1024ll;
+    const int64 SafeRowSize = FMath::Max<int64>(BytesPerRow, 1);
+    const int32 MaxRowsPerChunk = FMath::Max<int32>(1, static_cast<int32>(FMath::Min<int64>(Size.Y, DesiredChunkBytes / SafeRowSize)));
+
+    TArray64<uint8> TempBuffer;
+    TArray<uint8*> RowPointers;
+    RowPointers.Reserve(MaxRowsPerChunk);
+
+    int32 RowIndex = 0;
+    while (RowIndex < Size.Y)
+    {
+        const int32 RowsThisPass = FMath::Min(MaxRowsPerChunk, Size.Y - RowIndex);
+        RowPointers.SetNum(RowsThisPass, false);
+        PrepareRows(RowIndex, RowsThisPass, BytesPerRow, TempBuffer, RowPointers);
+        png_write_rows(PngPtr, reinterpret_cast<png_bytep*>(RowPointers.GetData()), RowsThisPass);
+        RowIndex += RowsThisPass;
+    }
+
+    png_write_end(PngPtr, InfoPtr);
+    png_destroy_write_struct(&PngPtr, &InfoPtr);
+
+    Archive->Close();
+    return !Archive->IsError();
+#else
+    return false;
+#endif
 }
 
 bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const
@@ -190,26 +376,29 @@ bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData,
 
     if (TargetPNGBitDepth == EOmniCapturePNGBitDepth::BitDepth16)
     {
-        const int64 PixelCount = Pixels.Num();
-        TArray64<uint16> Expanded;
-        Expanded.SetNum(PixelCount * 4);
-
-        const auto ExpandChannel = [](uint8 Value) -> uint16
+        auto PrepareRows = [&Pixels, &Size](int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
         {
-            return static_cast<uint16>(Value) * 257u;
+            const int64 RequiredSize = BytesPerRow * RowCount;
+            TempBuffer.SetNum(RequiredSize, false);
+
+            for (int32 Row = 0; Row < RowCount; ++Row)
+            {
+                uint8* RowData = TempBuffer.GetData() + BytesPerRow * Row;
+                RowPointers[Row] = RowData;
+                uint16* Dest = reinterpret_cast<uint16*>(RowData);
+                const int64 PixelRowStart = static_cast<int64>(RowStart + Row) * Size.X;
+                for (int32 Column = 0; Column < Size.X; ++Column)
+                {
+                    const FColor& Pixel = Pixels[PixelRowStart + Column];
+                    *Dest++ = static_cast<uint16>(Pixel.B) * 257u;
+                    *Dest++ = static_cast<uint16>(Pixel.G) * 257u;
+                    *Dest++ = static_cast<uint16>(Pixel.R) * 257u;
+                    *Dest++ = static_cast<uint16>(Pixel.A) * 257u;
+                }
+            }
         };
 
-        for (int64 Index = 0; Index < PixelCount; ++Index)
-        {
-            const FColor& Pixel = Pixels[Index];
-            const int64 BaseIndex = Index * 4;
-            Expanded[BaseIndex + 0] = ExpandChannel(Pixel.B);
-            Expanded[BaseIndex + 1] = ExpandChannel(Pixel.G);
-            Expanded[BaseIndex + 2] = ExpandChannel(Pixel.R);
-            Expanded[BaseIndex + 3] = ExpandChannel(Pixel.A);
-        }
-
-        return WritePNGRaw(FilePath, Size, Expanded.GetData(), Expanded.Num() * sizeof(uint16), ERGBFormat::BGRA, 16);
+        return WritePNGWithRowSource(FilePath, Size, ERGBFormat::BGRA, 16, PrepareRows);
     }
 
     return WritePNGRaw(FilePath, Size, Pixels.GetData(), Pixels.Num() * sizeof(FColor), ERGBFormat::BGRA, 8);
@@ -256,44 +445,66 @@ bool FOmniCaptureImageWriter::WritePNGFromLinear(const TImagePixelData<FFloat16C
 
     if (TargetPNGBitDepth == EOmniCapturePNGBitDepth::BitDepth16)
     {
-        TArray64<uint16> Expanded;
-        Expanded.SetNum(static_cast<int64>(ExpectedCount) * 4);
-
-        const auto ToUInt16 = [](float Value) -> uint16
+        auto PrepareRows = [&PixelData, &Size](int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
         {
-            const float Clamped = FMath::Clamp(Value, 0.0f, 1.0f);
-            return static_cast<uint16>(FMath::RoundToInt(Clamped * 65535.0f));
+            const int64 RequiredSize = BytesPerRow * RowCount;
+            TempBuffer.SetNum(RequiredSize, false);
+
+            const auto ToUInt16 = [](float Value) -> uint16
+            {
+                const float Clamped = FMath::Clamp(Value, 0.0f, 1.0f);
+                return static_cast<uint16>(FMath::RoundToInt(Clamped * 65535.0f));
+            };
+
+            for (int32 Row = 0; Row < RowCount; ++Row)
+            {
+                uint8* RowData = TempBuffer.GetData() + BytesPerRow * Row;
+                RowPointers[Row] = RowData;
+                uint16* Dest = reinterpret_cast<uint16*>(RowData);
+                const int64 PixelRowStart = static_cast<int64>(RowStart + Row) * Size.X;
+                for (int32 Column = 0; Column < Size.X; ++Column)
+                {
+                    const FFloat16Color& Pixel = PixelData.Pixels[PixelRowStart + Column];
+                    *Dest++ = ToUInt16(Pixel.B.GetFloat());
+                    *Dest++ = ToUInt16(Pixel.G.GetFloat());
+                    *Dest++ = ToUInt16(Pixel.R.GetFloat());
+                    *Dest++ = ToUInt16(Pixel.A.GetFloat());
+                }
+            }
         };
 
-        for (int32 Index = 0; Index < ExpectedCount; ++Index)
-        {
-            const FFloat16Color& Pixel = PixelData.Pixels[Index];
-            const int64 BaseIndex = static_cast<int64>(Index) * 4;
-            Expanded[BaseIndex + 0] = ToUInt16(Pixel.B.GetFloat());
-            Expanded[BaseIndex + 1] = ToUInt16(Pixel.G.GetFloat());
-            Expanded[BaseIndex + 2] = ToUInt16(Pixel.R.GetFloat());
-            Expanded[BaseIndex + 3] = ToUInt16(Pixel.A.GetFloat());
-        }
-
-        return WritePNGRaw(FilePath, Size, Expanded.GetData(), Expanded.Num() * sizeof(uint16), ERGBFormat::BGRA, 16);
+        return WritePNGWithRowSource(FilePath, Size, ERGBFormat::BGRA, 16, PrepareRows);
     }
 
-    TArray<FColor> Converted;
-    Converted.SetNum(ExpectedCount);
-    for (int32 Index = 0; Index < ExpectedCount; ++Index)
+    auto PrepareRows = [&PixelData, &Size](int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
     {
-        const FFloat16Color& Pixel = PixelData.Pixels[Index];
-        const FLinearColor Linear(
-            Pixel.R.GetFloat(),
-            Pixel.G.GetFloat(),
-            Pixel.B.GetFloat(),
-            Pixel.A.GetFloat());
-        Converted[Index] = Linear.ToFColor(true);
-    }
+        const int64 RequiredSize = BytesPerRow * RowCount;
+        TempBuffer.SetNum(RequiredSize, false);
 
-    TUniquePtr<TImagePixelData<FColor>> TempData = MakeUnique<TImagePixelData<FColor>>(Size);
-    TempData->Pixels = MoveTemp(Converted);
-    return WritePNG(*TempData, FilePath);
+        for (int32 Row = 0; Row < RowCount; ++Row)
+        {
+            uint8* RowData = TempBuffer.GetData() + BytesPerRow * Row;
+            RowPointers[Row] = RowData;
+            const int64 PixelRowStart = static_cast<int64>(RowStart + Row) * Size.X;
+            for (int32 Column = 0; Column < Size.X; ++Column)
+            {
+                const FFloat16Color& Pixel = PixelData.Pixels[PixelRowStart + Column];
+                const FLinearColor Linear(
+                    Pixel.R.GetFloat(),
+                    Pixel.G.GetFloat(),
+                    Pixel.B.GetFloat(),
+                    Pixel.A.GetFloat());
+                const FColor Converted = Linear.ToFColor(true);
+                const int64 Offset = static_cast<int64>(Column) * 4;
+                RowData[Offset + 0] = Converted.B;
+                RowData[Offset + 1] = Converted.G;
+                RowData[Offset + 2] = Converted.R;
+                RowData[Offset + 3] = Converted.A;
+            }
+        }
+    };
+
+    return WritePNGWithRowSource(FilePath, Size, ERGBFormat::BGRA, 8, PrepareRows);
 }
 
 bool FOmniCaptureImageWriter::WriteBMPFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const
