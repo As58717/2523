@@ -1317,6 +1317,14 @@ void UOmniCaptureSubsystem::RotateSegmentIfNeeded()
         }
     }
 
+    if (!bShouldRotate && ActiveSettings.SegmentFrameCount > 0)
+    {
+        if (CapturedFrameMetadata.Num() >= ActiveSettings.SegmentFrameCount)
+        {
+            bShouldRotate = true;
+        }
+    }
+
     if (!bShouldRotate && ActiveSettings.SegmentSizeLimitMB > 0)
     {
         if ((Now - LastSegmentSizeCheckTime) >= 1.0)

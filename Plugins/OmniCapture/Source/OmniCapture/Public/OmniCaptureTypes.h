@@ -132,7 +132,8 @@ struct OMNICAPTURE_API FOmniCaptureSettings
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture|Stereo") UCurveFloat* InterpupillaryDistanceCurve = nullptr;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture|Stereo") UCurveFloat* EyeConvergenceCurve = nullptr;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, UIMin = 0.0)) float SegmentDurationSeconds = 0.0f;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0)) int32 SegmentSizeLimitMB = 0;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0)) int32 SegmentSizeLimitMB = 0;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0, UIMin = 0)) int32 SegmentFrameCount = 0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") bool bCreateSegmentSubfolders = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniOutputFormat OutputFormat = EOmniOutputFormat::ImageSequence;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniCaptureImageFormat ImageFormat = EOmniCaptureImageFormat::PNG;
