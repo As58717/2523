@@ -1585,15 +1585,27 @@ void SOmniCaptureControlPanel::RefreshStatus()
     const bool bCapturing = Subsystem->IsCapturing();
     const FOmniCaptureSettings& Settings = bCapturing ? Subsystem->GetActiveSettings() : (SettingsObject.IsValid() ? SettingsObject->CaptureSettings : FOmniCaptureSettings());
 
+    const bool bNVENCConfigured = Settings.OutputFormat == EOmniOutputFormat::NVENCHardware;
+    const bool bNVENCDetected = bNVENCConfigured && FeatureAvailability.NVENC.bAvailable;
+    const bool bZeroCopyRequested = bNVENCConfigured && Settings.bZeroCopy;
+    const bool bZeroCopyPossible = FeatureAvailability.ZeroCopy.bAvailable;
+    const bool bZeroCopyActive = bNVENCDetected && bZeroCopyRequested && bZeroCopyPossible;
+
     const FIntPoint OutputSize = Settings.GetOutputResolution();
     const FText ProjectionText = ProjectionToText(Settings.Projection);
     const FText CoverageText = Settings.IsPlanar() ? LOCTEXT("CoverageNA", "N/A") : CoverageToText(Settings.Coverage);
     const FText LayoutText = LayoutToText(Settings);
     const FText OutputFormatText = OutputFormatToText(Settings.OutputFormat);
-    const FText CodecText = Settings.OutputFormat == EOmniOutputFormat::NVENCHardware ? CodecToText(Settings.Codec) : LOCTEXT("CodecNotApplicable", "N/A");
-    const FText ColorFormatText = Settings.OutputFormat == EOmniOutputFormat::NVENCHardware ? FormatToText(Settings.NVENCColorFormat) : LOCTEXT("ColorFormatNotApplicable", "N/A");
-    const FText ZeroCopyText = Settings.OutputFormat == EOmniOutputFormat::NVENCHardware
-        ? (Settings.bZeroCopy ? LOCTEXT("ZeroCopyYes", "Yes") : LOCTEXT("ZeroCopyNo", "No"))
+    const FText CodecText = bNVENCConfigured
+        ? (bNVENCDetected ? CodecToText(Settings.Codec) : LOCTEXT("CodecUnavailable", "-"))
+        : LOCTEXT("CodecNotApplicable", "N/A");
+    const FText ColorFormatText = bNVENCConfigured
+        ? (bNVENCDetected ? FormatToText(Settings.NVENCColorFormat) : LOCTEXT("ColorFormatUnavailable", "-"))
+        : LOCTEXT("ColorFormatNotApplicable", "N/A");
+    const FText ZeroCopyText = bNVENCConfigured
+        ? (bNVENCDetected
+            ? (bZeroCopyActive ? LOCTEXT("ZeroCopyYes", "Yes") : LOCTEXT("ZeroCopyNo", "No"))
+            : LOCTEXT("ZeroCopyUnavailable", "-"))
         : LOCTEXT("ZeroCopyNotApplicable", "N/A");
     const FText ImageFormatText = Settings.OutputFormat == EOmniOutputFormat::ImageSequence ? ImageFormatToText(Settings.ImageFormat) : LOCTEXT("ImageFormatNotApplicable", "N/A");
 
