@@ -20,7 +20,8 @@ public class OmniCapture : ModuleRules
             "UMG",
             "ImageWriteQueue",
             "Json",
-            "JsonUtilities"
+            "JsonUtilities",
+            "AVEncoder"
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]
@@ -34,8 +35,7 @@ public class OmniCapture : ModuleRules
             "ImageCore",
             "ImageWrapper",
             "InputCore",
-            "Renderer",
-            "AVEncoder"
+            "Renderer"
         });
 
         AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib", "UElibPNG");
