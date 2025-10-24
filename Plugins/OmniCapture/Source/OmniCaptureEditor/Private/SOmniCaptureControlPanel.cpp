@@ -18,6 +18,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -788,10 +789,13 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                     SNew(SOverlay)
                     + SOverlay::Slot()
                     [
-                        SAssignNew(PreviewImageWidget, SImage)
-                        .Visibility(EVisibility::Collapsed)
-                        .ColorAndOpacity(FLinearColor::White)
+                        SNew(SScaleBox)
                         .Stretch(EStretch::ScaleToFit)
+                        [
+                            SAssignNew(PreviewImageWidget, SImage)
+                            .Visibility(EVisibility::Collapsed)
+                            .ColorAndOpacity(FLinearColor::White)
+                        ]
                     ]
                     + SOverlay::Slot()
                     .HAlign(HAlign_Center)
