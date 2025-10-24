@@ -424,7 +424,8 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
 
     if (IsImageSequenceFormat(Settings.OutputFormat))
     {
-        FString Pattern = OutputDirectory / FString::Printf(TEXT("%s_%%06d.png"), *BaseFileName);
+        const FString Extension = Settings.GetImageFileExtension();
+        FString Pattern = OutputDirectory / FString::Printf(TEXT("%s_%%06d%s"), *BaseFileName, *Extension);
         CommandLine = FString::Printf(TEXT("-y -framerate %.3f -i \"%s\""), EffectiveFrameRate, *Pattern);
     }
     else if (Settings.OutputFormat == EOmniOutputFormat::NVENCHardware)
