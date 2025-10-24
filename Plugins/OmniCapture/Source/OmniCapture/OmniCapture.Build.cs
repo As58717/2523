@@ -45,7 +45,7 @@ public class OmniCapture : ModuleRules
             PrivateDependencyModuleNames.Add("D3D12RHI");
         }
 
-        PrivateDefinitions.Add("WITH_OMNI_NVENC=0");
+        PrivateDefinitions.Add("WITH_OMNI_NVENC=1");
     }
 }
 
