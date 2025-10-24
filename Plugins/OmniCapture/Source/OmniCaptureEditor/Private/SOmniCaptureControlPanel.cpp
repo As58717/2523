@@ -32,6 +32,7 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SOverlay.h"
 #include "Slate/SlateGameResources.h"
+#include "Brushes/SlateDynamicImageBrush.h"
 #include "Types/SlateEnums.h"
 #include "Engine/Texture2D.h"
 #include "OmniCaptureTypes.h"
@@ -1687,7 +1688,9 @@ void SOmniCaptureControlPanel::UpdatePreviewTextureDisplay()
         {
             CachedPreviewTexture = SubsystemPreviewTexture;
             CachedPreviewSize = NewSize;
-            PreviewBrush = MakeShared<FSlateDynamicImageBrush>(SubsystemPreviewTexture, NewSize);
+            const FName BrushName = SubsystemPreviewTexture->GetFName();
+            PreviewBrush = MakeShared<FSlateDynamicImageBrush>(BrushName, NewSize);
+            PreviewBrush->SetResourceObject(SubsystemPreviewTexture);
             PreviewImageWidget->SetImage(PreviewBrush.Get());
         }
 

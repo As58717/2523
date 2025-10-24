@@ -18,19 +18,16 @@
 #endif
 #include "GenericPlatform/GenericPlatformDriver.h"
 
-#if WITH_OMNI_NVENC && PLATFORM_WINDOWS
+#if OMNI_WITH_AVENCODER
 #include "AVEncoder/VideoEncoderFactory.h"
-#include "AVEncoder/VideoEncoderInput.h"
-#include "AVEncoder/VideoEncoder.h"
 #include "AVEncoder/VideoEncoderCommon.h"
-#include "RHI.h"
 #include "RHIResources.h"
 #include "RHICommandList.h"
 #endif
 
 namespace
 {
-#if WITH_OMNI_NVENC && PLATFORM_WINDOWS
+#if OMNI_WITH_AVENCODER
     AVEncoder::EVideoFormat ToVideoFormat(EOmniCaptureColorFormat Format)
     {
         switch (Format)
@@ -53,7 +50,7 @@ FOmniCaptureNVENCEncoder::FOmniCaptureNVENCEncoder()
 
 bool FOmniCaptureNVENCEncoder::IsNVENCAvailable()
 {
-#if WITH_OMNI_NVENC && PLATFORM_WINDOWS
+#if OMNI_WITH_AVENCODER
     return true;
 #else
     return false;
@@ -64,7 +61,7 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
 {
     FOmniNVENCCapabilities Caps;
 
-#if WITH_OMNI_NVENC && PLATFORM_WINDOWS
+#if OMNI_WITH_AVENCODER
     Caps.bHardwareAvailable = IsNVENCAvailable();
     Caps.bSupportsNV12 = SupportsColorFormat(EOmniCaptureColorFormat::NV12);
     Caps.bSupportsP010 = SupportsColorFormat(EOmniCaptureColorFormat::P010);
@@ -106,7 +103,7 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
 
 bool FOmniCaptureNVENCEncoder::SupportsColorFormat(EOmniCaptureColorFormat Format)
 {
-#if WITH_OMNI_NVENC && PLATFORM_WINDOWS
+#if OMNI_WITH_AVENCODER
     switch (Format)
     {
     case EOmniCaptureColorFormat::NV12:
@@ -156,7 +153,7 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     ColorFormat = Settings.NVENCColorFormat;
     bZeroCopyRequested = Settings.bZeroCopy;
 
-#if WITH_OMNI_NVENC && PLATFORM_WINDOWS
+#if OMNI_WITH_AVENCODER
     const FIntPoint OutputSize = Settings.GetOutputResolution();
     const int32 OutputWidth = OutputSize.X;
     const int32 OutputHeight = OutputSize.Y;
@@ -240,7 +237,7 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
 
 void FOmniCaptureNVENCEncoder::EnqueueFrame(const FOmniCaptureFrame& Frame)
 {
-#if WITH_OMNI_NVENC && PLATFORM_WINDOWS
+#if OMNI_WITH_AVENCODER
     if (!bInitialized || !VideoEncoder.IsValid() || !EncoderInput.IsValid())
     {
         return;
@@ -300,7 +297,7 @@ void FOmniCaptureNVENCEncoder::EnqueueFrame(const FOmniCaptureFrame& Frame)
 
 void FOmniCaptureNVENCEncoder::Finalize()
 {
-#if WITH_OMNI_NVENC && PLATFORM_WINDOWS
+#if OMNI_WITH_AVENCODER
     if (!bInitialized)
     {
         return;
