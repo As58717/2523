@@ -29,7 +29,7 @@
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Images/SImage.h"
-#include "Widgets/Layout/SOverlay.h"
+#include "Widgets/SOverlay.h"
 #include "Slate/SlateGameResources.h"
 #include "Types/SlateEnums.h"
 #include "Engine/Texture2D.h"

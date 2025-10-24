@@ -19,10 +19,10 @@
 #include "GenericPlatform/GenericPlatformDriver.h"
 
 #if WITH_OMNI_NVENC && PLATFORM_WINDOWS
-#include "VideoEncoderFactory.h"
-#include "VideoEncoderInput.h"
-#include "VideoEncoder.h"
-#include "VideoEncoderCommon.h"
+#include "AVEncoder/VideoEncoderFactory.h"
+#include "AVEncoder/VideoEncoderInput.h"
+#include "AVEncoder/VideoEncoder.h"
+#include "AVEncoder/VideoEncoderCommon.h"
 #include "RHI.h"
 #include "RHIResources.h"
 #include "RHICommandList.h"

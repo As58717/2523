@@ -34,7 +34,8 @@ public class OmniCapture : ModuleRules
             "ImageCore",
             "ImageWrapper",
             "InputCore",
-            "Renderer"
+            "Renderer",
+            "AVEncoder"
         });
 
         AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib", "UElibPNG");
