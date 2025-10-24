@@ -4,10 +4,19 @@
 #include "CoreMinimal.h"
 #include "OmniCaptureTypes.h"
 
+#undef OMNI_WITH_AVENCODER
+
 #if PLATFORM_WINDOWS && WITH_OMNI_NVENC
-#include "AVEncoder/VideoEncoder.h"
-#include "AVEncoder/VideoEncoderFactory.h"
-using namespace AVEncoder;
+    #if __has_include("AVEncoder/VideoEncoder.h") && __has_include("AVEncoder/VideoEncoderInput.h") && __has_include("AVEncoder/VideoEncoderFactory.h") && __has_include("AVEncoder/VideoEncoderCommon.h")
+        #define OMNI_WITH_AVENCODER 1
+        #include "AVEncoder/VideoEncoder.h"
+        #include "AVEncoder/VideoEncoderInput.h"
+        using namespace AVEncoder;
+    #else
+        #define OMNI_WITH_AVENCODER 0
+    #endif
+#else
+    #define OMNI_WITH_AVENCODER 0
 #endif
 
 
@@ -47,7 +56,7 @@ private:
     bool bZeroCopyRequested = true;
     EOmniCaptureCodec RequestedCodec = EOmniCaptureCodec::HEVC;
 
-#if PLATFORM_WINDOWS && WITH_OMNI_NVENC
+#if OMNI_WITH_AVENCODER
     TSharedPtr<AVEncoder::FVideoEncoder> VideoEncoder;
     TSharedPtr<AVEncoder::FVideoEncoderInput> EncoderInput;
     AVEncoder::FVideoEncoder::FLayerConfig LayerConfig;
