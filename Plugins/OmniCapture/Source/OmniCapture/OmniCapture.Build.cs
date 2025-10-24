@@ -35,6 +35,7 @@ public class OmniCapture : ModuleRules
             "ImageCore",
             "ImageWrapper",
             "InputCore",
+            "MediaUtils",
             "Renderer"
         });
 
@@ -42,7 +43,11 @@ public class OmniCapture : ModuleRules
 
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {
-            PrivateDependencyModuleNames.Add("D3D12RHI");
+            PrivateDependencyModuleNames.AddRange(new string[]
+            {
+                "D3D11RHI",
+                "D3D12RHI"
+            });
         }
 
         PrivateDefinitions.Add("WITH_OMNI_NVENC=1");
