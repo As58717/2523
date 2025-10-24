@@ -12,6 +12,64 @@
 
 namespace
 {
+    FString NormalizeFFmpegCandidatePath(const FString& InPath)
+    {
+        FString Trimmed = InPath;
+        Trimmed.TrimStartAndEndInline();
+
+        while (Trimmed.StartsWith(TEXT("\"")) || Trimmed.StartsWith(TEXT("'")))
+        {
+            Trimmed = Trimmed.RightChop(1);
+        }
+        while (Trimmed.EndsWith(TEXT("\"")) || Trimmed.EndsWith(TEXT("'")))
+        {
+            Trimmed = Trimmed.LeftChop(1);
+        }
+
+        if (Trimmed.IsEmpty())
+        {
+            return Trimmed;
+        }
+
+        FString Normalized = Trimmed;
+        FPaths::NormalizeFilename(Normalized);
+
+        const IFileManager& FileManager = IFileManager::Get();
+
+        auto AppendExecutable = [](const FString& Directory)
+        {
+            FString ExecutableName = TEXT("ffmpeg");
+#if PLATFORM_WINDOWS
+            ExecutableName += TEXT(".exe");
+#endif
+            return FPaths::Combine(Directory, ExecutableName);
+        };
+
+        const bool bIsDirectory = FileManager.DirectoryExists(*Normalized);
+        if (bIsDirectory)
+        {
+            return AppendExecutable(Normalized);
+        }
+
+        if (FileManager.FileExists(*Normalized))
+        {
+            return Normalized;
+        }
+
+        const FString AbsolutePath = FPaths::ConvertRelativePathToFull(Normalized);
+        if (FileManager.DirectoryExists(*AbsolutePath))
+        {
+            return AppendExecutable(AbsolutePath);
+        }
+
+        if (FileManager.FileExists(*AbsolutePath))
+        {
+            return AbsolutePath;
+        }
+
+        return Trimmed;
+    }
+
     static bool IsImageSequenceFormat(EOmniOutputFormat Format)
     {
 #if UE_VERSION_OLDER_THAN(5, 6, 0)
@@ -43,12 +101,12 @@ FString FOmniCaptureMuxer::ResolveFFmpegBinary(const FOmniCaptureSettings& Setti
 {
     if (!Settings.PreferredFFmpegPath.IsEmpty())
     {
-        return Settings.PreferredFFmpegPath;
+        return NormalizeFFmpegCandidatePath(Settings.PreferredFFmpegPath);
     }
     FString EnvPath = FPlatformMisc::GetEnvironmentVariable(TEXT("OMNICAPTURE_FFMPEG"));
     if (!EnvPath.IsEmpty())
     {
-        return EnvPath;
+        return NormalizeFFmpegCandidatePath(EnvPath);
     }
     return TEXT("ffmpeg");
 }
@@ -68,7 +126,13 @@ bool FOmniCaptureMuxer::IsFFmpegAvailable(const FOmniCaptureSettings& Settings, 
     {
         return true;
     }
-    return FPaths::FileExists(Resolved);
+    if (FPaths::FileExists(Resolved))
+    {
+        return true;
+    }
+
+    const FString AbsoluteResolved = FPaths::ConvertRelativePathToFull(Resolved);
+    return FPaths::FileExists(AbsoluteResolved);
 }
 
 void FOmniCaptureMuxer::Initialize(const FOmniCaptureSettings& Settings, const FString& InOutputDirectory)
