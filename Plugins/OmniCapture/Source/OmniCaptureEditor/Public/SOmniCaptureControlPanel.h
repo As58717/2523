@@ -32,7 +32,7 @@ class SListViewBase;
 template<typename ItemType> class SListView;
 class IDetailsView;
 class SImage;
-class FSlateDynamicImageBrush;
+struct FSlateDynamicImageBrush;
 class UOmniCaptureEditorSettings;
 class UOmniCaptureSubsystem;
 class UTexture2D;

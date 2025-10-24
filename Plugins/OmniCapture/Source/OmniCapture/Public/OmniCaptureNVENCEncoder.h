@@ -5,8 +5,8 @@
 #include "OmniCaptureTypes.h"
 
 #if PLATFORM_WINDOWS && WITH_OMNI_NVENC
-#include "VideoEncoder.h"
-#include "VideoEncoderFactory.h"
+#include "AVEncoder/VideoEncoder.h"
+#include "AVEncoder/VideoEncoderFactory.h"
 using namespace AVEncoder;
 #endif
 

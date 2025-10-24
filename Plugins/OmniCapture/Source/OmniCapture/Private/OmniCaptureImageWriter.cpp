@@ -37,14 +37,9 @@ namespace
         case ERGBFormat::Gray:
         case ERGBFormat::GrayF:
             return 1;
-        case ERGBFormat::RGB:
-        case ERGBFormat::BGR:
-        case ERGBFormat::RGBF:
-            return 3;
         case ERGBFormat::RGBA:
         case ERGBFormat::BGRA:
         case ERGBFormat::RGBAF:
-        case ERGBFormat::BGRAF:
             return 4;
         default:
             return 0;
@@ -58,14 +53,9 @@ namespace
         case ERGBFormat::Gray:
         case ERGBFormat::GrayF:
             return PNG_COLOR_TYPE_GRAY;
-        case ERGBFormat::RGB:
-        case ERGBFormat::BGR:
-        case ERGBFormat::RGBF:
-            return PNG_COLOR_TYPE_RGB;
         case ERGBFormat::RGBA:
         case ERGBFormat::BGRA:
         case ERGBFormat::RGBAF:
-        case ERGBFormat::BGRAF:
             return PNG_COLOR_TYPE_RGBA;
         default:
             return -1;
@@ -330,7 +320,7 @@ bool FOmniCaptureImageWriter::WritePNGWithRowSource(const FString& FilePath, con
         png_set_swap(PngPtr);
     }
 
-    if (Format == ERGBFormat::BGRA || Format == ERGBFormat::BGR || Format == ERGBFormat::BGRAF)
+    if (Format == ERGBFormat::BGRA)
     {
         png_set_bgr(PngPtr);
     }
@@ -349,7 +339,7 @@ bool FOmniCaptureImageWriter::WritePNGWithRowSource(const FString& FilePath, con
     while (RowIndex < Size.Y)
     {
         const int32 RowsThisPass = FMath::Min(MaxRowsPerChunk, Size.Y - RowIndex);
-        RowPointers.SetNum(RowsThisPass, false);
+        RowPointers.SetNum(RowsThisPass, EAllowShrinking::No);
         PrepareRows(RowIndex, RowsThisPass, BytesPerRow, TempBuffer, RowPointers);
         png_write_rows(PngPtr, reinterpret_cast<png_bytep*>(RowPointers.GetData()), RowsThisPass);
         RowIndex += RowsThisPass;
@@ -379,7 +369,7 @@ bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData,
         auto PrepareRows = [&Pixels, &Size](int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
         {
             const int64 RequiredSize = BytesPerRow * RowCount;
-            TempBuffer.SetNum(RequiredSize, false);
+            TempBuffer.SetNum(RequiredSize, EAllowShrinking::No);
 
             for (int32 Row = 0; Row < RowCount; ++Row)
             {
@@ -448,7 +438,7 @@ bool FOmniCaptureImageWriter::WritePNGFromLinear(const TImagePixelData<FFloat16C
         auto PrepareRows = [&PixelData, &Size](int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
         {
             const int64 RequiredSize = BytesPerRow * RowCount;
-            TempBuffer.SetNum(RequiredSize, false);
+            TempBuffer.SetNum(RequiredSize, EAllowShrinking::No);
 
             const auto ToUInt16 = [](float Value) -> uint16
             {
@@ -479,7 +469,7 @@ bool FOmniCaptureImageWriter::WritePNGFromLinear(const TImagePixelData<FFloat16C
     auto PrepareRows = [&PixelData, &Size](int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
     {
         const int64 RequiredSize = BytesPerRow * RowCount;
-        TempBuffer.SetNum(RequiredSize, false);
+        TempBuffer.SetNum(RequiredSize, EAllowShrinking::No);
 
         for (int32 Row = 0; Row < RowCount; ++Row)
         {
