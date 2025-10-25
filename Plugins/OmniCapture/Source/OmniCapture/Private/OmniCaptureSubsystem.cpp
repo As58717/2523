@@ -1153,6 +1153,18 @@ bool UOmniCaptureSubsystem::ApplyFallbacks(FString* OutFailureReason)
 
 void UOmniCaptureSubsystem::InitializeAudioRecording()
 {
+    const bool bIsPNGSequence = ActiveSettings.OutputFormat == EOmniOutputFormat::ImageSequence &&
+        ActiveSettings.ImageFormat == EOmniCaptureImageFormat::PNG;
+
+    if (bIsPNGSequence)
+    {
+        if (ActiveSettings.bRecordAudio)
+        {
+            AddWarningUnique(TEXT("Audio recording is disabled for PNG image sequences to prevent extended A/V drift."));
+        }
+        return;
+    }
+
     if (!ActiveSettings.bRecordAudio)
     {
         return;
