@@ -58,6 +58,7 @@ public:
 
     bool IsInitialized() const { return bInitialized; }
     FString GetOutputFilePath() const { return OutputFilePath; }
+    const FString& GetLastError() const { return LastErrorMessage; }
 
 private:
     FString OutputFilePath;
@@ -65,6 +66,7 @@ private:
     EOmniCaptureColorFormat ColorFormat = EOmniCaptureColorFormat::NV12;
     bool bZeroCopyRequested = true;
     EOmniCaptureCodec RequestedCodec = EOmniCaptureCodec::HEVC;
+    FString LastErrorMessage;
 
 #if OMNI_WITH_AVENCODER
     TSharedPtr<AVEncoder::FVideoEncoder> VideoEncoder;

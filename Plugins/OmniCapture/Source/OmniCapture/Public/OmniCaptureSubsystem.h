@@ -7,6 +7,7 @@
 #include "OmniCaptureAudioRecorder.h"
 #include "OmniCaptureNVENCEncoder.h"
 #include "OmniCaptureMuxer.h"
+#include "Logging/LogVerbosity.h"
 #include "OmniCaptureSubsystem.generated.h"
 
 class AOmniCaptureRigActor;
@@ -94,6 +95,15 @@ public:
     UFUNCTION(BlueprintCallable, Category = "OmniCapture")
     void SetPreviewVisualizationMode(EOmniCapturePreviewView InView);
 
+    UFUNCTION(BlueprintCallable, Category = "OmniCapture|Diagnostics")
+    void GetCaptureDiagnosticLog(TArray<FOmniCaptureDiagnosticEntry>& OutEntries) const;
+
+    UFUNCTION(BlueprintCallable, Category = "OmniCapture|Diagnostics")
+    void ClearCaptureDiagnosticLog();
+
+    UFUNCTION(BlueprintCallable, Category = "OmniCapture|Diagnostics")
+    FString GetLastErrorMessage() const { return LastErrorMessage; }
+
 private:
     void CreateRig();
     void DestroyRig();
@@ -133,6 +143,12 @@ private:
 
     FString BuildOutputDirectory() const;
     FString BuildFrameFileName(int32 FrameIndex, const FString& Extension) const;
+
+    void SetDiagnosticContext(const FString& StepName);
+    void AppendDiagnostic(EOmniCaptureDiagnosticLevel Level, const FString& Message, const FString& StepOverride = FString());
+    void AppendDiagnosticFromVerbosity(ELogVerbosity::Type Verbosity, const FString& Message, const FString& StepOverride = FString());
+    void LogDiagnosticMessage(ELogVerbosity::Type Verbosity, const FString& StepName, const FString& Message);
+    FString GetActiveDiagnosticStep() const { return CurrentDiagnosticStep; }
 
 private:
     friend class AOmniCaptureDirectorActor;
@@ -194,5 +210,9 @@ private:
 
     TArray<FConsoleVariableOverrideRecord> ConsoleOverrideRecords;
     bool bRenderOverridesApplied = false;
+
+    TArray<FOmniCaptureDiagnosticEntry> DiagnosticLog;
+    FString CurrentDiagnosticStep;
+    FString LastErrorMessage;
 };
 
