@@ -102,7 +102,6 @@ void UOmniCaptureSubsystem::LogDiagnosticMessage(ELogVerbosity::Type Verbosity, 
     case ELogVerbosity::Log:
     case ELogVerbosity::Verbose:
     case ELogVerbosity::VeryVerbose:
-    case ELogVerbosity::All:
     case ELogVerbosity::SetColor:
     case ELogVerbosity::BreakOnLog:
     default:
