@@ -20,8 +20,7 @@ public class OmniCapture : ModuleRules
             "UMG",
             "ImageWriteQueue",
             "Json",
-            "JsonUtilities",
-            "AVEncoder"
+            "JsonUtilities"
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]
@@ -43,14 +42,20 @@ public class OmniCapture : ModuleRules
 
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {
+            PublicDependencyModuleNames.Add("AVEncoder");
+
             PrivateDependencyModuleNames.AddRange(new string[]
             {
                 "D3D11RHI",
                 "D3D12RHI"
             });
-        }
 
-        PrivateDefinitions.Add("WITH_OMNI_NVENC=1");
+            PrivateDefinitions.Add("WITH_OMNI_NVENC=1");
+        }
+        else
+        {
+            PrivateDefinitions.Add("WITH_OMNI_NVENC=0");
+        }
     }
 }
 
