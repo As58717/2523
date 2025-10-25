@@ -1815,23 +1815,60 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
     else
     {
         NewState.NVENC.bAvailable = false;
-        NewState.NVENC.Reason = LOCTEXT("NVENCUnavailableTooltip", "NVENC hardware encoder unavailable on this GPU or platform.");
+
+        FString ReasonLines = TEXT("NVENC hardware encoder unavailable.");
+        if (!Caps.bDllPresent && !Caps.DllFailureReason.IsEmpty())
+        {
+            ReasonLines += FString::Printf(TEXT("\nDLL: %s"), *Caps.DllFailureReason);
+        }
+        else if (!Caps.bApisReady && !Caps.ApiFailureReason.IsEmpty())
+        {
+            ReasonLines += FString::Printf(TEXT("\nAPI: %s"), *Caps.ApiFailureReason);
+        }
+        else if (!Caps.bSessionOpenable && !Caps.SessionFailureReason.IsEmpty())
+        {
+            ReasonLines += FString::Printf(TEXT("\nSession: %s"), *Caps.SessionFailureReason);
+        }
+        else if (!Caps.HardwareFailureReason.IsEmpty())
+        {
+            ReasonLines += FString::Printf(TEXT("\nDetail: %s"), *Caps.HardwareFailureReason);
+        }
+
+        NewState.NVENC.Reason = FText::FromString(ReasonLines);
     }
 
     NewState.NVENCHEVC.bAvailable = Caps.bSupportsHEVC;
-    NewState.NVENCHEVC.Reason = Caps.bSupportsHEVC
-        ? LOCTEXT("HEVCSupportedTooltip", "HEVC encoding is supported by the detected NVENC device.")
-        : LOCTEXT("HEVCUnsupportedTooltip", "This NVENC hardware does not support HEVC encoding.");
+    if (Caps.bSupportsHEVC)
+    {
+        NewState.NVENCHEVC.Reason = LOCTEXT("HEVCSupportedTooltip", "HEVC encoding is supported by the detected NVENC device.");
+    }
+    else
+    {
+        FString CodecReason = Caps.CodecFailureReason.IsEmpty() ? TEXT("This NVENC hardware does not support HEVC encoding.") : Caps.CodecFailureReason;
+        NewState.NVENCHEVC.Reason = FText::FromString(CodecReason);
+    }
 
     NewState.NVENCNV12.bAvailable = Caps.bSupportsNV12;
-    NewState.NVENCNV12.Reason = Caps.bSupportsNV12
-        ? LOCTEXT("NV12SupportedTooltip", "NV12 input format is supported by NVENC.")
-        : LOCTEXT("NV12UnsupportedTooltip", "NV12 input format is not available on this NVENC hardware.");
+    if (Caps.bSupportsNV12)
+    {
+        NewState.NVENCNV12.Reason = LOCTEXT("NV12SupportedTooltip", "NV12 input format is supported by NVENC.");
+    }
+    else
+    {
+        FString NV12Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("NV12 input format is not available on this NVENC hardware.") : Caps.FormatFailureReason;
+        NewState.NVENCNV12.Reason = FText::FromString(NV12Reason);
+    }
 
     NewState.NVENCP010.bAvailable = Caps.bSupportsP010;
-    NewState.NVENCP010.Reason = Caps.bSupportsP010
-        ? LOCTEXT("P010SupportedTooltip", "10-bit P010 input is supported by NVENC.")
-        : LOCTEXT("P010UnsupportedTooltip", "This NVENC hardware does not support 10-bit P010 input.");
+    if (Caps.bSupportsP010)
+    {
+        NewState.NVENCP010.Reason = LOCTEXT("P010SupportedTooltip", "10-bit P010 input is supported by NVENC.");
+    }
+    else
+    {
+        FString P010Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("This NVENC hardware does not support 10-bit P010 input.") : Caps.FormatFailureReason;
+        NewState.NVENCP010.Reason = FText::FromString(P010Reason);
+    }
 
     if (NewState.NVENC.bAvailable)
     {

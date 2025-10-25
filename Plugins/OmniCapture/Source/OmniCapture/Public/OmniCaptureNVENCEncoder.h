@@ -23,10 +23,20 @@
 struct FOmniNVENCCapabilities
 {
     bool bHardwareAvailable = false;
+    bool bDllPresent = false;
+    bool bApisReady = false;
+    bool bSessionOpenable = false;
     bool bSupportsNV12 = false;
     bool bSupportsP010 = false;
     bool bSupportsHEVC = false;
     bool bSupports10Bit = false;
+    bool bSupportsBGRA = false;
+    FString DllFailureReason;
+    FString ApiFailureReason;
+    FString SessionFailureReason;
+    FString CodecFailureReason;
+    FString FormatFailureReason;
+    FString HardwareFailureReason;
     FString AdapterName;
     FString DriverVersion;
 };
