@@ -181,10 +181,11 @@ struct OMNICAPTURE_API FOmniCaptureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture", meta = (ClampMin = 0.0, ClampMax = 1.0)) float PolarDampening = 0.5f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") FOmniCaptureQuality Quality;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureCodec Codec = EOmniCaptureCodec::HEVC;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureColorFormat NVENCColorFormat = EOmniCaptureColorFormat::NV12;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") bool bZeroCopy = true;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC", meta = (ClampMin = 0, UIMin = 0)) int32 RingBufferCapacity = 6;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureColorFormat NVENCColorFormat = EOmniCaptureColorFormat::NV12;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") bool bZeroCopy = true;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC", meta = (ClampMin = 0, UIMin = 0)) int32 RingBufferCapacity = 6;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureRingBufferPolicy RingBufferPolicy = EOmniCaptureRingBufferPolicy::DropOldest;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") FString NVENCDllPathOverride;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") bool bOpenPreviewOnFinalize = false;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preview") EOmniCapturePreviewView PreviewVisualization = EOmniCapturePreviewView::StereoComposite;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bGenerateManifest = true;

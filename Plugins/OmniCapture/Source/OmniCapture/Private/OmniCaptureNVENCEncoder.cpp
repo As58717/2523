@@ -70,6 +70,36 @@ namespace
 
     using FNvEncodeAPIGetMaxSupportedVersion = uint32(OMNI_NVENCAPI*)(uint32*);
 
+    FCriticalSection& GetProbeCacheMutex()
+    {
+        static FCriticalSection Mutex;
+        return Mutex;
+    }
+
+    FCriticalSection& GetDllOverrideMutex()
+    {
+        static FCriticalSection Mutex;
+        return Mutex;
+    }
+
+    bool& GetProbeValidFlag()
+    {
+        static bool bValid = false;
+        return bValid;
+    }
+
+    FNVENCHardwareProbeResult& GetCachedProbe()
+    {
+        static FNVENCHardwareProbeResult Cached;
+        return Cached;
+    }
+
+    FString& GetDllOverridePath()
+    {
+        static FString OverridePath;
+        return OverridePath;
+    }
+
     bool TryCreateEncoderSession(AVEncoder::ECodec Codec, AVEncoder::EVideoFormat Format, FString& OutFailureReason)
     {
         constexpr int32 TestWidth = 256;
@@ -128,10 +158,75 @@ namespace
     {
         FNVENCHardwareProbeResult Result;
 
-        void* NvencHandle = FPlatformProcess::GetDllHandle(TEXT("nvEncodeAPI64.dll"));
+        FString OverridePath;
+        {
+            FScopeLock OverrideLock(&GetDllOverrideMutex());
+            OverridePath = GetDllOverridePath();
+        }
+
+        OverridePath.TrimStartAndEndInline();
+        FString NormalizedOverridePath = OverridePath;
+        if (!NormalizedOverridePath.IsEmpty())
+        {
+            NormalizedOverridePath = FPaths::ConvertRelativePathToFull(NormalizedOverridePath);
+            FPaths::MakePlatformFilename(NormalizedOverridePath);
+        }
+
+        FString OverrideCandidate = NormalizedOverridePath;
+        if (!OverrideCandidate.IsEmpty())
+        {
+            const FString Extension = FPaths::GetExtension(OverrideCandidate, true);
+            if (!Extension.Equals(TEXT(".dll"), ESearchCase::IgnoreCase))
+            {
+                OverrideCandidate = FPaths::Combine(OverrideCandidate, TEXT("nvEncodeAPI64.dll"));
+            }
+            FPaths::MakePlatformFilename(OverrideCandidate);
+        }
+
+        void* NvencHandle = nullptr;
+        FString LoadedFrom;
+        TArray<FString> FailureMessages;
+
+        if (!OverrideCandidate.IsEmpty())
+        {
+            if (!FPaths::FileExists(*OverrideCandidate))
+            {
+                FailureMessages.Add(FString::Printf(TEXT("Override path not found: %s."), *OverrideCandidate));
+            }
+            else
+            {
+                NvencHandle = FPlatformProcess::GetDllHandle(*OverrideCandidate);
+                if (NvencHandle)
+                {
+                    LoadedFrom = OverrideCandidate;
+                }
+                else
+                {
+                    FailureMessages.Add(FString::Printf(TEXT("Failed to load override DLL: %s."), *OverrideCandidate));
+                }
+            }
+        }
+
+        if (!NvencHandle)
+        {
+            NvencHandle = FPlatformProcess::GetDllHandle(TEXT("nvEncodeAPI64.dll"));
+            if (NvencHandle)
+            {
+                LoadedFrom = TEXT("system search paths");
+            }
+            else
+            {
+                FailureMessages.Add(TEXT("Failed to load nvEncodeAPI64.dll from system search paths."));
+            }
+        }
+
         if (NvencHandle)
         {
             Result.bDllPresent = true;
+            if (!LoadedFrom.IsEmpty())
+            {
+                UE_LOG(LogTemp, Verbose, TEXT("NVENC probe loading nvEncodeAPI64.dll from %s"), *LoadedFrom);
+            }
             FNvEncodeAPIGetMaxSupportedVersion NvEncodeAPIGetMaxSupportedVersion = reinterpret_cast<FNvEncodeAPIGetMaxSupportedVersion>(FPlatformProcess::GetDllExport(NvencHandle, TEXT("NvEncodeAPIGetMaxSupportedVersion")));
             if (NvEncodeAPIGetMaxSupportedVersion)
             {
@@ -154,7 +249,9 @@ namespace
         }
         else
         {
-            Result.DllFailureReason = TEXT("Failed to load nvEncodeAPI64.dll");
+            Result.DllFailureReason = FailureMessages.Num() > 0
+                ? FString::Join(FailureMessages, TEXT(" "))
+                : TEXT("Failed to load nvEncodeAPI64.dll.");
         }
 
         if (!Result.bDllPresent)
@@ -230,12 +327,12 @@ namespace
 
     const FNVENCHardwareProbeResult& GetNVENCHardwareProbe()
     {
-        static FNVENCHardwareProbeResult CachedResult;
-        static bool bHasRun = false;
-        if (!bHasRun)
+        FScopeLock CacheLock(&GetProbeCacheMutex());
+        if (!GetProbeValidFlag())
         {
-            bHasRun = true;
-            CachedResult = RunNVENCHardwareProbe();
+            GetCachedProbe() = RunNVENCHardwareProbe();
+            GetProbeValidFlag() = true;
+            const FNVENCHardwareProbeResult& CachedResult = GetCachedProbe();
             if (!CachedResult.bDllPresent || !CachedResult.bApisReady || !CachedResult.bSessionOpenable)
             {
                 UE_LOG(LogTemp, Warning, TEXT("NVENC probe failed (Dll=%s, Api=%s, Session=%s). Reasons: %s | %s | %s"),
@@ -247,7 +344,7 @@ namespace
                     CachedResult.SessionFailureReason.IsEmpty() ? TEXT("<none>") : *CachedResult.SessionFailureReason);
             }
         }
-        return CachedResult;
+        return GetCachedProbe();
     }
 #endif
 }
@@ -359,6 +456,45 @@ bool FOmniCaptureNVENCEncoder::SupportsZeroCopyRHI()
          GDynamicRHI->GetInterfaceType() == ERHIInterfaceType::D3D12);
 #else
     return false;
+#endif
+}
+
+void FOmniCaptureNVENCEncoder::SetDllOverridePath(const FString& InOverridePath)
+{
+#if OMNI_WITH_AVENCODER
+    FString NormalizedPath = InOverridePath;
+    NormalizedPath.TrimStartAndEndInline();
+    if (!NormalizedPath.IsEmpty())
+    {
+        NormalizedPath = FPaths::ConvertRelativePathToFull(NormalizedPath);
+        FPaths::MakePlatformFilename(NormalizedPath);
+    }
+
+    bool bChanged = false;
+    {
+        FScopeLock OverrideLock(&GetDllOverrideMutex());
+        if (!GetDllOverridePath().Equals(NormalizedPath, ESearchCase::CaseSensitive))
+        {
+            GetDllOverridePath() = NormalizedPath;
+            bChanged = true;
+        }
+    }
+
+    if (bChanged)
+    {
+        FScopeLock CacheLock(&GetProbeCacheMutex());
+        GetProbeValidFlag() = false;
+    }
+#else
+    (void)InOverridePath;
+#endif
+}
+
+void FOmniCaptureNVENCEncoder::InvalidateCachedCapabilities()
+{
+#if OMNI_WITH_AVENCODER
+    FScopeLock CacheLock(&GetProbeCacheMutex());
+    GetProbeValidFlag() = false;
 #endif
 }
 

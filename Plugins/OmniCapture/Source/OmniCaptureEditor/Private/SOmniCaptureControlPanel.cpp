@@ -27,6 +27,7 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Input/SComboBox.h"
+#include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Images/SImage.h"
@@ -1090,6 +1091,33 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
+        .Padding(0.f, 4.f, 0.f, 0.f)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("NVENCDllOverrideLabel", "NVENC DLL override"))
+                .ToolTipText(LOCTEXT("NVENCDllOverrideTooltip", "Optional absolute path to nvEncodeAPI64.dll or the folder that contains it."))
+            ]
+            + SHorizontalBox::Slot()
+            .Padding(8.f, 0.f, 0.f, 0.f)
+            [
+                SNew(SEditableTextBox)
+                .Text_Lambda([this]()
+                {
+                    return GetNVENCDllOverrideText();
+                })
+                .HintText(LOCTEXT("NVENCDllOverrideHint", "Leave empty to use system search paths"))
+                .OnTextCommitted(this, &SOmniCaptureControlPanel::HandleNVENCDllOverrideCommitted)
+                .MinDesiredWidth(320.f)
+                .ToolTipText(LOCTEXT("NVENCDllOverrideTextTooltip", "Provide a custom nvEncodeAPI64.dll location if the driver installation is not in the default search paths."))
+            ]
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
         .Padding(0.f, 6.f, 0.f, 0.f)
         [
             SNew(SCheckBox)
@@ -1999,6 +2027,7 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
     FFeatureAvailabilityState NewState;
 
     FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    FOmniCaptureNVENCEncoder::SetDllOverridePath(Snapshot.NVENCDllPathOverride);
     const FOmniNVENCCapabilities Caps = FOmniCaptureNVENCEncoder::QueryCapabilities();
 
     if (Caps.bHardwareAvailable)
@@ -2014,6 +2043,7 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
         if (!Caps.bDllPresent && !Caps.DllFailureReason.IsEmpty())
         {
             ReasonLines += FString::Printf(TEXT("\nDLL: %s"), *Caps.DllFailureReason);
+            ReasonLines += TEXT("\nHint: Provide an NVENC DLL override path if the runtime is installed outside the default search paths.");
         }
         else if (!Caps.bApisReady && !Caps.ApiFailureReason.IsEmpty())
         {
@@ -2167,6 +2197,39 @@ FText SOmniCaptureControlPanel::GetNVENCWarningText() const
 EVisibility SOmniCaptureControlPanel::GetNVENCWarningVisibility() const
 {
     return FeatureAvailability.NVENC.bAvailable ? EVisibility::Collapsed : EVisibility::Visible;
+}
+
+FText SOmniCaptureControlPanel::GetNVENCDllOverrideText() const
+{
+    return FText::FromString(GetSettingsSnapshot().NVENCDllPathOverride);
+}
+
+void SOmniCaptureControlPanel::HandleNVENCDllOverrideCommitted(const FText& NewText, ETextCommit::Type CommitType)
+{
+    FString CleanPath = NewText.ToString();
+    CleanPath.TrimStartAndEndInline();
+    (void)CommitType;
+
+    if (!CleanPath.IsEmpty())
+    {
+        CleanPath = FPaths::ConvertRelativePathToFull(CleanPath);
+        FPaths::MakePlatformFilename(CleanPath);
+    }
+
+    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    const bool bChanged = !Snapshot.NVENCDllPathOverride.Equals(CleanPath, ESearchCase::CaseSensitive);
+
+    if (bChanged)
+    {
+        ModifyCaptureSettings([CleanPath](FOmniCaptureSettings& Settings)
+        {
+            Settings.NVENCDllPathOverride = CleanPath;
+        });
+    }
+
+    FOmniCaptureNVENCEncoder::SetDllOverridePath(CleanPath);
+    FOmniCaptureNVENCEncoder::InvalidateCachedCapabilities();
+    RefreshFeatureAvailability(true);
 }
 
 bool SOmniCaptureControlPanel::IsCodecSelectable(EOmniCaptureCodec Codec) const
@@ -2378,6 +2441,8 @@ void SOmniCaptureControlPanel::ModifyCaptureSettings(TFunctionRef<void(FOmniCapt
     Settings->Modify();
     Mutator(Settings->CaptureSettings);
     Settings->SaveConfig();
+
+    FOmniCaptureNVENCEncoder::SetDllOverridePath(Settings->CaptureSettings.NVENCDllPathOverride);
 
     if (SettingsView.IsValid())
     {

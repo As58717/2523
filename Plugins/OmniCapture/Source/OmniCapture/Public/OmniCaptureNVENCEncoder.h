@@ -55,6 +55,8 @@ public:
     static FOmniNVENCCapabilities QueryCapabilities();
     static bool SupportsColorFormat(EOmniCaptureColorFormat Format);
     static bool SupportsZeroCopyRHI();
+    static void SetDllOverridePath(const FString& InOverridePath);
+    static void InvalidateCachedCapabilities();
 
     bool IsInitialized() const { return bInitialized; }
     FString GetOutputFilePath() const { return OutputFilePath; }
