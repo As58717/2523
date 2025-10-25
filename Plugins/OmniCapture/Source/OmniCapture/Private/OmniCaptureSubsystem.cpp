@@ -21,6 +21,7 @@
 #include "RenderingThread.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 #include "RHI.h"
 #include "PixelFormat.h"
 #include "Math/UnrealMathUtility.h"
@@ -36,10 +37,79 @@ namespace OmniCapture
     static const FString WarningLowFps = TEXT("Capture frame rate is below the configured target");
 }
 
+namespace
+{
+    constexpr int32 GMaxOmniDiagnostics = 256;
+
+    EOmniCaptureDiagnosticLevel ConvertVerbosityToDiagnostic(ELogVerbosity::Type Verbosity)
+    {
+        switch (Verbosity)
+        {
+        case ELogVerbosity::Error:
+        case ELogVerbosity::Fatal:
+            return EOmniCaptureDiagnosticLevel::Error;
+        case ELogVerbosity::Warning:
+            return EOmniCaptureDiagnosticLevel::Warning;
+        default:
+            return EOmniCaptureDiagnosticLevel::Info;
+        }
+    }
+}
+
+void UOmniCaptureSubsystem::SetDiagnosticContext(const FString& StepName)
+{
+    CurrentDiagnosticStep = StepName;
+}
+
+void UOmniCaptureSubsystem::AppendDiagnostic(EOmniCaptureDiagnosticLevel Level, const FString& Message, const FString& StepOverride)
+{
+    FOmniCaptureDiagnosticEntry& Entry = DiagnosticLog.AddDefaulted_GetRef();
+    Entry.Timestamp = FDateTime::UtcNow();
+    Entry.SecondsSinceCaptureStart = CaptureStartTime > 0.0 ? static_cast<float>(FPlatformTime::Seconds() - CaptureStartTime) : 0.0f;
+    Entry.Step = StepOverride.IsEmpty() ? (CurrentDiagnosticStep.IsEmpty() ? TEXT("General") : CurrentDiagnosticStep) : StepOverride;
+    Entry.Message = Message;
+    Entry.Level = Level;
+
+    if (DiagnosticLog.Num() > GMaxOmniDiagnostics)
+    {
+        const int32 Excess = DiagnosticLog.Num() - GMaxOmniDiagnostics;
+        DiagnosticLog.RemoveAt(0, Excess, false);
+    }
+
+    if (Level == EOmniCaptureDiagnosticLevel::Error)
+    {
+        LastErrorMessage = Message;
+    }
+}
+
+void UOmniCaptureSubsystem::AppendDiagnosticFromVerbosity(ELogVerbosity::Type Verbosity, const FString& Message, const FString& StepOverride)
+{
+    AppendDiagnostic(ConvertVerbosityToDiagnostic(Verbosity), Message, StepOverride);
+}
+
+void UOmniCaptureSubsystem::LogDiagnosticMessage(ELogVerbosity::Type Verbosity, const FString& StepName, const FString& Message)
+{
+    UE_LOG(LogOmniCaptureSubsystem, Verbosity, TEXT("%s"), *Message);
+    AppendDiagnosticFromVerbosity(Verbosity, Message, StepName);
+}
+
+void UOmniCaptureSubsystem::GetCaptureDiagnosticLog(TArray<FOmniCaptureDiagnosticEntry>& OutEntries) const
+{
+    OutEntries = DiagnosticLog;
+}
+
+void UOmniCaptureSubsystem::ClearCaptureDiagnosticLog()
+{
+    DiagnosticLog.Reset();
+    LastErrorMessage.Reset();
+    CurrentDiagnosticStep.Reset();
+}
+
 void UOmniCaptureSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
-    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("OmniCapture subsystem initialized"));
+    SetDiagnosticContext(TEXT("Subsystem"));
+    LogDiagnosticMessage(ELogVerbosity::Log, TEXT("Subsystem"), TEXT("OmniCapture subsystem initialized"));
 }
 
 void UOmniCaptureSubsystem::Deinitialize()
@@ -52,13 +122,17 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
 {
     if (bIsCapturing)
     {
-        UE_LOG(LogOmniCaptureSubsystem, Warning, TEXT("Capture already running"));
+        LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("BeginCapture"), TEXT("Capture already running"));
         return;
     }
 
+    ClearCaptureDiagnosticLog();
+    SetDiagnosticContext(TEXT("BeginCapture"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Capture request received."), TEXT("BeginCapture"));
+
     if (InSettings.Resolution <= 0)
     {
-        UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Invalid capture resolution"));
+        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("BeginCapture"), TEXT("Invalid capture resolution"));
         return;
     }
 
@@ -91,15 +165,19 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     LastRuntimeWarningCheckTime = FPlatformTime::Seconds();
     LastSegmentSizeCheckTime = LastRuntimeWarningCheckTime;
 
+    SetDiagnosticContext(TEXT("ValidateEnvironment"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Validating capture environment."), TEXT("ValidateEnvironment"));
     const bool bEnvironmentOk = ValidateEnvironment();
     if (!ApplyFallbacks())
     {
-        UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Capture aborted due to environment validation failure."));
+        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("ValidateEnvironment"), TEXT("Capture aborted due to environment validation failure."));
         return;
     }
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Environment validation completed."), TEXT("ValidateEnvironment"));
     if (!bEnvironmentOk && ActiveWarnings.Num() > 0)
     {
-        UE_LOG(LogOmniCaptureSubsystem, Warning, TEXT("Capture environment warnings: %s"), *FString::Join(ActiveWarnings, TEXT("; ")));
+        const FString CombinedWarnings = FString::Join(ActiveWarnings, TEXT("; "));
+        LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("ValidateEnvironment"), FString::Printf(TEXT("Capture environment warnings: %s"), *CombinedWarnings));
     }
 
     ConfigureActiveSegment();
@@ -107,7 +185,7 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     UWorld* World = GetWorld();
     if (!World)
     {
-        UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Invalid world context for capture"));
+        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("BeginCapture"), TEXT("Invalid world context for capture"));
         return;
     }
 
@@ -117,10 +195,12 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
 
     ApplyRenderFeatureOverrides();
 
+    SetDiagnosticContext(TEXT("CreateRig"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Spawning capture rig."), TEXT("CreateRig"));
     CreateRig();
     if (!RigActor.IsValid())
     {
-        UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Failed to create capture rig"));
+        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("CreateRig"), TEXT("Failed to create capture rig"));
         RestoreRenderFeatureOverrides();
         DynamicParameterStartTime = 0.0;
         LastDynamicInterPupillaryDistance = -1.0f;
@@ -130,10 +210,12 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
 
     UpdateDynamicStereoParameters();
 
+    SetDiagnosticContext(TEXT("CreateTickActor"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Spawning capture tick actor."), TEXT("CreateTickActor"));
     CreateTickActor();
     if (!TickActor.IsValid())
     {
-        UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Failed to create tick actor"));
+        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("CreateTickActor"), TEXT("Failed to create tick actor"));
         DestroyRig();
         RestoreRenderFeatureOverrides();
         DynamicParameterStartTime = 0.0;
@@ -144,6 +226,8 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
 
     SpawnPreviewActor();
 
+    SetDiagnosticContext(TEXT("InitializeOutputs"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Initializing output writers."), TEXT("InitializeOutputs"));
     InitializeOutputWriters();
 
     OutputMuxer = MakeUnique<FOmniCaptureMuxer>();
@@ -225,7 +309,7 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     const TCHAR* ProjectionLabel = ActiveSettings.IsPlanar()
         ? TEXT("Planar")
         : (ActiveSettings.IsFisheye() ? TEXT("Fisheye") : TEXT("Equirect"));
-    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Begin capture %s %s (%dx%d -> %dx%d, %s %s) (%s, %s, %s) -> %s"),
+    const FString BeginSummary = FString::Printf(TEXT("Begin capture %s %s (%dx%d -> %dx%d, %s %s) (%s, %s, %s) -> %s"),
         ActiveSettings.Mode == EOmniCaptureMode::Stereo ? TEXT("Stereo") : TEXT("Mono"),
         CoverageLabel,
         ActiveSettings.IsPlanar() ? ActiveSettings.PlanarResolution.X : (ActiveSettings.IsFisheye() ? ActiveSettings.FisheyeResolution.X : ActiveSettings.Resolution),
@@ -238,6 +322,9 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
         ActiveSettings.Gamma == EOmniCaptureGamma::Linear ? TEXT("Linear") : TEXT("sRGB"),
         ActiveSettings.Codec == EOmniCaptureCodec::HEVC ? TEXT("HEVC") : TEXT("H.264"),
         *ActiveSettings.OutputDirectory);
+    LogDiagnosticMessage(ELogVerbosity::Log, TEXT("BeginCapture"), BeginSummary);
+    SetDiagnosticContext(TEXT("CaptureLoop"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Capture pipeline initialized."), TEXT("CaptureLoop"));
 }
 
 void UOmniCaptureSubsystem::EndCapture(bool bFinalize)
@@ -247,7 +334,7 @@ void UOmniCaptureSubsystem::EndCapture(bool bFinalize)
         return;
     }
 
-    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("End capture (Finalize=%d)"), bFinalize ? 1 : 0);
+    LogDiagnosticMessage(ELogVerbosity::Log, TEXT("EndCapture"), FString::Printf(TEXT("End capture (Finalize=%d)"), bFinalize ? 1 : 0));
 
     bIsCapturing = false;
     bIsPaused = false;
@@ -277,6 +364,9 @@ void UOmniCaptureSubsystem::EndCapture(bool bFinalize)
     }
     FinalizeOutputs(bFinalize);
 
+    SetDiagnosticContext(TEXT("Idle"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Capture session ended."), TEXT("Idle"));
+
     State = EOmniCaptureState::Idle;
     LatestRingBufferStats = FOmniCaptureRingBufferStats();
     AudioStats = FOmniAudioSyncStats();
@@ -291,6 +381,8 @@ void UOmniCaptureSubsystem::PauseCapture()
 
     bIsPaused = true;
     State = EOmniCaptureState::Paused;
+    SetDiagnosticContext(TEXT("Paused"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Capture paused."), TEXT("Paused"));
 
     if (RingBuffer)
     {
@@ -319,6 +411,8 @@ void UOmniCaptureSubsystem::ResumeCapture()
     State = bDroppedFrames ? EOmniCaptureState::DroppedFrames : EOmniCaptureState::Recording;
     LastFpsSampleTime = 0.0;
     FramesSinceLastFpsSample = 0;
+    SetDiagnosticContext(TEXT("CaptureLoop"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Capture resumed."), TEXT("CaptureLoop"));
 
     if (AudioRecorder)
     {
@@ -335,22 +429,25 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
 {
     OutFilePath.Empty();
 
+    SetDiagnosticContext(TEXT("StillCapture"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Still capture request received."), TEXT("StillCapture"));
+
     if (bIsCapturing)
     {
-        UE_LOG(LogOmniCaptureSubsystem, Warning, TEXT("Cannot capture still image while recording is active."));
+        LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("StillCapture"), TEXT("Cannot capture still image while recording is active."));
         return false;
     }
 
     if (InSettings.Resolution <= 0)
     {
-        UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Invalid resolution supplied for still capture."));
+        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("StillCapture"), TEXT("Invalid resolution supplied for still capture."));
         return false;
     }
 
     UWorld* World = GetWorld();
     if (!World)
     {
-        UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("No valid world available for still capture."));
+        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("StillCapture"), TEXT("No valid world available for still capture."));
         return false;
     }
 
@@ -366,7 +463,7 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
     AOmniCaptureRigActor* TempRig = World->SpawnActor<AOmniCaptureRigActor>(AOmniCaptureRigActor::StaticClass(), FTransform::Identity, SpawnParams);
     if (!TempRig)
     {
-        UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("Failed to spawn capture rig for still capture."));
+        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("StillCapture"), TEXT("Failed to spawn capture rig for still capture."));
         return false;
     }
 
@@ -399,7 +496,7 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
 
     if (!Result.PixelData.IsValid())
     {
-        UE_LOG(LogOmniCaptureSubsystem, Warning, TEXT("Still capture did not generate pixel data. Check cubemap rig configuration."));
+        LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("StillCapture"), TEXT("Still capture did not generate pixel data. Check cubemap rig configuration."));
         return false;
     }
 
@@ -437,7 +534,7 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
     LastStillImagePath = OutFilePath;
     LastFinalizedOutput = OutFilePath;
 
-    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Panoramic still saved to %s"), *OutFilePath);
+    LogDiagnosticMessage(ELogVerbosity::Log, TEXT("StillCapture"), FString::Printf(TEXT("Panoramic still saved to %s"), *OutFilePath));
 
     return true;
 }
@@ -663,6 +760,7 @@ void UOmniCaptureSubsystem::InitializeOutputWriters()
     case EOmniOutputFormat::ImageSequence:
         ImageWriter = MakeUnique<FOmniCaptureImageWriter>();
         ImageWriter->Initialize(ActiveSettings, ActiveSettings.OutputDirectory);
+        AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Image sequence writer initialized."), TEXT("InitializeOutputs"));
         break;
     case EOmniOutputFormat::NVENCHardware:
         NVENCEncoder = MakeUnique<FOmniCaptureNVENCEncoder>();
@@ -670,6 +768,12 @@ void UOmniCaptureSubsystem::InitializeOutputWriters()
         if (NVENCEncoder->IsInitialized())
         {
             RecordedVideoPath = NVENCEncoder->GetOutputFilePath();
+            AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("NVENC output will be written to %s"), *RecordedVideoPath), TEXT("InitializeOutputs"));
+        }
+        else
+        {
+            const FString NvencError = NVENCEncoder->GetLastError().IsEmpty() ? TEXT("NVENC encoder failed to initialize.") : NVENCEncoder->GetLastError();
+            LogDiagnosticMessage(ELogVerbosity::Error, TEXT("InitializeOutputs"), NvencError);
         }
         break;
     default:
@@ -697,6 +801,9 @@ void UOmniCaptureSubsystem::ShutdownOutputWriters(bool bFinalizeOutputs)
 
 void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
 {
+    SetDiagnosticContext(TEXT("FinalizeOutputs"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Finalize outputs requested (Finalize=%s)."), bFinalizeOutputs ? TEXT("true") : TEXT("false")), TEXT("FinalizeOutputs"));
+
     if (!bFinalizeOutputs)
     {
         CapturedFrameMetadata.Empty();
@@ -716,7 +823,7 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
 
     if (CompletedSegments.Num() == 0)
     {
-        UE_LOG(LogOmniCaptureSubsystem, Warning, TEXT("FinalizeOutputs called with no captured frames"));
+        LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), TEXT("FinalizeOutputs called with no captured frames"));
         OutputMuxer.Reset();
         RecordedAudioPath.Reset();
         RecordedVideoPath.Reset();
@@ -749,12 +856,16 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
         const bool bSuccess = OutputMuxer->FinalizeCapture(SegmentSettings, Segment.Frames, Segment.AudioPath, Segment.VideoPath);
         if (!bSuccess)
         {
-            UE_LOG(LogOmniCaptureSubsystem, Warning, TEXT("Output muxing failed for segment %d. Check OmniCapture manifest for details."), Segment.SegmentIndex);
+            LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), FString::Printf(TEXT("Output muxing failed for segment %d. Check OmniCapture manifest for details."), Segment.SegmentIndex));
         }
         OutputMuxer->EndRealtimeSession();
 
         const FString FinalVideoPath = Segment.Directory / (Segment.BaseFileName + TEXT(".mp4"));
         LastFinalizedOutput = FinalVideoPath;
+        if (!FinalVideoPath.IsEmpty())
+        {
+            AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Muxed output ready: %s"), *FinalVideoPath), TEXT("FinalizeOutputs"));
+        }
 
         if (SegmentSettings.bOpenPreviewOnFinalize && !FinalVideoPath.IsEmpty())
         {
@@ -776,7 +887,7 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
     const FString GpuBrand = FPlatformMisc::GetPrimaryGPUBrand();
     if (!GpuBrand.IsEmpty())
     {
-        ActiveWarnings.Add(FString::Printf(TEXT("GPU: %s"), *GpuBrand));
+        AddWarningUnique(FString::Printf(TEXT("GPU: %s"), *GpuBrand));
     }
 
 #if PLATFORM_WINDOWS
@@ -785,17 +896,17 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
         const ERHIInterfaceType InterfaceType = GDynamicRHI->GetInterfaceType();
         if (InterfaceType != ERHIInterfaceType::D3D11 && InterfaceType != ERHIInterfaceType::D3D12)
         {
-            ActiveWarnings.Add(TEXT("OmniCapture requires D3D11 or D3D12 for GPU capture. Current RHI is unsupported."));
+            AddWarningUnique(TEXT("OmniCapture requires D3D11 or D3D12 for GPU capture. Current RHI is unsupported."));
             bResult = false;
         }
     }
     else
     {
-        ActiveWarnings.Add(TEXT("Unable to resolve active RHI interface. Zero-copy NVENC will be disabled."));
+        AddWarningUnique(TEXT("Unable to resolve active RHI interface. Zero-copy NVENC will be disabled."));
         bResult = false;
     }
 #else
-    ActiveWarnings.Add(TEXT("OmniCapture NVENC pipeline is Windows-only; PNG sequence mode is recommended."));
+    AddWarningUnique(TEXT("OmniCapture NVENC pipeline is Windows-only; PNG sequence mode is recommended."));
     if (ActiveSettings.OutputFormat == EOmniOutputFormat::NVENCHardware)
     {
         bResult = false;
@@ -807,22 +918,22 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
         const FOmniNVENCCapabilities Caps = FOmniCaptureNVENCEncoder::QueryCapabilities();
         if (!Caps.AdapterName.IsEmpty())
         {
-            ActiveWarnings.Add(FString::Printf(TEXT("Adapter: %s"), *Caps.AdapterName));
+            AddWarningUnique(FString::Printf(TEXT("Adapter: %s"), *Caps.AdapterName));
         }
         if (!Caps.DriverVersion.IsEmpty())
         {
-            ActiveWarnings.Add(FString::Printf(TEXT("Driver: %s"), *Caps.DriverVersion));
+            AddWarningUnique(FString::Printf(TEXT("Driver: %s"), *Caps.DriverVersion));
         }
 
         if (!Caps.bHardwareAvailable)
         {
             if (!Caps.HardwareFailureReason.IsEmpty())
             {
-                ActiveWarnings.Add(FString::Printf(TEXT("NVENC hardware encoder unavailable: %s"), *Caps.HardwareFailureReason));
+                AddWarningUnique(FString::Printf(TEXT("NVENC hardware encoder unavailable: %s"), *Caps.HardwareFailureReason));
             }
             else
             {
-                ActiveWarnings.Add(TEXT("NVENC hardware encoder unavailable"));
+                AddWarningUnique(TEXT("NVENC hardware encoder unavailable"));
             }
             bResult = false;
         }
@@ -830,11 +941,11 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
         {
             if (!Caps.CodecFailureReason.IsEmpty())
             {
-                ActiveWarnings.Add(FString::Printf(TEXT("HEVC codec unsupported: %s"), *Caps.CodecFailureReason));
+                AddWarningUnique(FString::Printf(TEXT("HEVC codec unsupported: %s"), *Caps.CodecFailureReason));
             }
             else
             {
-                ActiveWarnings.Add(TEXT("HEVC codec unsupported by detected NVENC hardware"));
+                AddWarningUnique(TEXT("HEVC codec unsupported by detected NVENC hardware"));
             }
             bResult = false;
         }
@@ -842,11 +953,11 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
         {
             if (!Caps.FormatFailureReason.IsEmpty())
             {
-                ActiveWarnings.Add(FString::Printf(TEXT("P010 / Main10 NVENC path unavailable: %s"), *Caps.FormatFailureReason));
+                AddWarningUnique(FString::Printf(TEXT("P010 / Main10 NVENC path unavailable: %s"), *Caps.FormatFailureReason));
             }
             else
             {
-                ActiveWarnings.Add(TEXT("P010 / Main10 NVENC path unavailable on this GPU"));
+                AddWarningUnique(TEXT("P010 / Main10 NVENC path unavailable on this GPU"));
             }
             bResult = false;
         }
@@ -854,11 +965,11 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
         {
             if (!Caps.FormatFailureReason.IsEmpty())
             {
-                ActiveWarnings.Add(FString::Printf(TEXT("NV12 NVENC path unavailable: %s"), *Caps.FormatFailureReason));
+                AddWarningUnique(FString::Printf(TEXT("NV12 NVENC path unavailable: %s"), *Caps.FormatFailureReason));
             }
             else
             {
-                ActiveWarnings.Add(TEXT("NV12 NVENC path unavailable on this GPU"));
+                AddWarningUnique(TEXT("NV12 NVENC path unavailable on this GPU"));
             }
             bResult = false;
         }
@@ -872,7 +983,7 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
             PixelFormat = PF_NV12;
 #else
             bCanQueryPixelFormat = false;
-            ActiveWarnings.Add(TEXT("NV12 NVENC path unsupported by this engine build"));
+            AddWarningUnique(TEXT("NV12 NVENC path unsupported by this engine build"));
             bResult = false;
 #endif
         }
@@ -882,14 +993,14 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
             PixelFormat = PF_P010;
 #else
             bCanQueryPixelFormat = false;
-            ActiveWarnings.Add(TEXT("P010 / Main10 NVENC path unavailable on this engine build"));
+            AddWarningUnique(TEXT("P010 / Main10 NVENC path unavailable on this engine build"));
             bResult = false;
 #endif
         }
 
         if (bCanQueryPixelFormat && !GPixelFormats[PixelFormat].Supported)
         {
-            ActiveWarnings.Add(TEXT("Requested NVENC pixel format is not supported by the active RHI"));
+            AddWarningUnique(TEXT("Requested NVENC pixel format is not supported by the active RHI"));
             bResult = false;
         }
 
@@ -898,11 +1009,11 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
 #if PLATFORM_WINDOWS
             if (!GDynamicRHI || (GDynamicRHI->GetInterfaceType() != ERHIInterfaceType::D3D11 && GDynamicRHI->GetInterfaceType() != ERHIInterfaceType::D3D12))
             {
-                ActiveWarnings.Add(TEXT("Zero-copy NVENC requires D3D11 or D3D12; zero-copy will be disabled."));
+                AddWarningUnique(TEXT("Zero-copy NVENC requires D3D11 or D3D12; zero-copy will be disabled."));
                 bResult = false;
             }
 #else
-            ActiveWarnings.Add(TEXT("Zero-copy NVENC is only available on Windows/D3D; zero-copy will be disabled."));
+            AddWarningUnique(TEXT("Zero-copy NVENC is only available on Windows/D3D; zero-copy will be disabled."));
             bResult = false;
 #endif
         }
@@ -911,11 +1022,11 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
     FString ResolvedFFmpeg;
     if (!FOmniCaptureMuxer::IsFFmpegAvailable(ActiveSettings, &ResolvedFFmpeg))
     {
-        ActiveWarnings.Add(TEXT("FFmpeg not detected - automatic muxing disabled"));
+        AddWarningUnique(TEXT("FFmpeg not detected - automatic muxing disabled"));
     }
     else if (!ResolvedFFmpeg.IsEmpty() && !ResolvedFFmpeg.Equals(TEXT("ffmpeg"), ESearchCase::IgnoreCase))
     {
-        ActiveWarnings.Add(FString::Printf(TEXT("FFmpeg: %s"), *ResolvedFFmpeg));
+        AddWarningUnique(FString::Printf(TEXT("FFmpeg: %s"), *ResolvedFFmpeg));
     }
 
     uint64 FreeBytes = 0;
@@ -941,7 +1052,7 @@ bool UOmniCaptureSubsystem::ApplyFallbacks()
     if (ActiveSettings.OutputFormat == EOmniOutputFormat::NVENCHardware)
     {
 #if !PLATFORM_WINDOWS
-        ActiveWarnings.Add(TEXT("NVENC output is not supported on this platform; switching to PNG sequence."));
+        AddWarningUnique(TEXT("NVENC output is not supported on this platform; switching to PNG sequence."));
         ActiveSettings.OutputFormat = EOmniOutputFormat::ImageSequence;
         return true;
 #endif
@@ -953,39 +1064,39 @@ bool UOmniCaptureSubsystem::ApplyFallbacks()
             const FString Reason = Caps.HardwareFailureReason.IsEmpty() ? TEXT("NVENC is unavailable") : Caps.HardwareFailureReason;
             if (ActiveSettings.bAllowNVENCFallback)
             {
-                ActiveWarnings.Add(FString::Printf(TEXT("Falling back to PNG sequence because NVENC is unavailable: %s"), *Reason));
+                AddWarningUnique(FString::Printf(TEXT("Falling back to PNG sequence because NVENC is unavailable: %s"), *Reason));
                 ActiveSettings.OutputFormat = EOmniOutputFormat::ImageSequence;
                 return true;
             }
 
-            ActiveWarnings.Add(FString::Printf(TEXT("NVENC required but unavailable: %s"), *Reason));
+            AddWarningUnique(FString::Printf(TEXT("NVENC required but unavailable: %s"), *Reason));
             return false;
         }
 
         if (ActiveSettings.Codec == EOmniCaptureCodec::HEVC && !Caps.bSupportsHEVC)
         {
             const FString Reason = Caps.CodecFailureReason.IsEmpty() ? TEXT("HEVC unsupported - falling back to H.264") : FString::Printf(TEXT("HEVC unsupported (%s) - falling back to H.264"), *Caps.CodecFailureReason);
-            ActiveWarnings.Add(Reason);
+            AddWarningUnique(Reason);
             ActiveSettings.Codec = EOmniCaptureCodec::H264;
         }
 
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::P010 && !Caps.bSupports10Bit)
         {
             const FString Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("P010 unsupported - switching to NV12") : FString::Printf(TEXT("P010 unsupported (%s) - switching to NV12"), *Caps.FormatFailureReason);
-            ActiveWarnings.Add(Reason);
+            AddWarningUnique(Reason);
             ActiveSettings.NVENCColorFormat = EOmniCaptureColorFormat::NV12;
         }
 
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::NV12 && !Caps.bSupportsNV12)
         {
             const FString Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("NV12 unsupported - switching to BGRA") : FString::Printf(TEXT("NV12 unsupported (%s) - switching to BGRA"), *Caps.FormatFailureReason);
-            ActiveWarnings.Add(Reason);
+            AddWarningUnique(Reason);
             ActiveSettings.NVENCColorFormat = EOmniCaptureColorFormat::BGRA;
         }
 
         if (!FOmniCaptureNVENCEncoder::SupportsColorFormat(ActiveSettings.NVENCColorFormat))
         {
-            ActiveWarnings.Add(TEXT("Requested NVENC color format unavailable - switching to BGRA"));
+            AddWarningUnique(TEXT("Requested NVENC color format unavailable - switching to BGRA"));
             ActiveSettings.NVENCColorFormat = EOmniCaptureColorFormat::BGRA;
         }
 
@@ -994,11 +1105,11 @@ bool UOmniCaptureSubsystem::ApplyFallbacks()
 #if PLATFORM_WINDOWS
             if (!GDynamicRHI || (GDynamicRHI->GetInterfaceType() != ERHIInterfaceType::D3D11 && GDynamicRHI->GetInterfaceType() != ERHIInterfaceType::D3D12))
             {
-                ActiveWarnings.Add(TEXT("Zero-copy not supported on this RHI - disabling zero-copy"));
+                AddWarningUnique(TEXT("Zero-copy not supported on this RHI - disabling zero-copy"));
                 ActiveSettings.bZeroCopy = false;
             }
 #else
-            ActiveWarnings.Add(TEXT("Zero-copy NVENC disabled on this platform"));
+            AddWarningUnique(TEXT("Zero-copy NVENC disabled on this platform"));
             ActiveSettings.bZeroCopy = false;
 #endif
         }
@@ -1014,9 +1125,13 @@ void UOmniCaptureSubsystem::InitializeAudioRecording()
         return;
     }
 
+    SetDiagnosticContext(TEXT("Audio"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Initializing audio recording."), TEXT("Audio"));
+
     UWorld* World = GetWorld();
     if (!World)
     {
+        LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("Audio"), TEXT("Audio recording skipped - invalid world context."));
         return;
     }
 
@@ -1024,9 +1139,11 @@ void UOmniCaptureSubsystem::InitializeAudioRecording()
     if (AudioRecorder->Initialize(World, ActiveSettings))
     {
         AudioRecorder->Start();
+        AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Audio recorder started."), TEXT("Audio"));
     }
     else
     {
+        LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("Audio"), TEXT("Failed to initialize audio recorder."));
         AudioRecorder.Reset();
     }
 }
@@ -1042,7 +1159,7 @@ void UOmniCaptureSubsystem::ShutdownAudioRecording()
     RecordedAudioPath = AudioRecorder->GetOutputFilePath();
     if (!RecordedAudioPath.IsEmpty())
     {
-        UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Audio recording saved to %s"), *RecordedAudioPath);
+        LogDiagnosticMessage(ELogVerbosity::Log, TEXT("Audio"), FString::Printf(TEXT("Audio recording saved to %s"), *RecordedAudioPath));
     }
     AudioRecorder.Reset();
 }
@@ -1302,7 +1419,7 @@ void UOmniCaptureSubsystem::HandleDroppedFrame()
     State = EOmniCaptureState::DroppedFrames;
     ++DroppedFrameCount;
     AddWarningUnique(OmniCapture::WarningFrameDrop);
-    UE_LOG(LogOmniCaptureSubsystem, Warning, TEXT("OmniCapture frame dropped"));
+    LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("CaptureLoop"), TEXT("OmniCapture frame dropped"));
 }
 
 void UOmniCaptureSubsystem::ConfigureActiveSegment()
@@ -1376,7 +1493,7 @@ void UOmniCaptureSubsystem::RotateSegmentIfNeeded()
         return;
     }
 
-    UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("Rotating capture segment -> %d"), CurrentSegmentIndex + 1);
+    LogDiagnosticMessage(ELogVerbosity::Log, TEXT("SegmentRotation"), FString::Printf(TEXT("Rotating capture segment -> %d"), CurrentSegmentIndex + 1));
 
     if (RingBuffer)
     {
@@ -1563,7 +1680,11 @@ void UOmniCaptureSubsystem::AddWarningUnique(const FString& Warning)
 {
     if (!Warning.IsEmpty())
     {
-        ActiveWarnings.AddUnique(Warning);
+        if (!ActiveWarnings.Contains(Warning))
+        {
+            ActiveWarnings.Add(Warning);
+            AppendDiagnostic(EOmniCaptureDiagnosticLevel::Warning, FString::Printf(TEXT("Warning active: %s"), *Warning), GetActiveDiagnosticStep());
+        }
     }
 }
 
@@ -1571,7 +1692,11 @@ void UOmniCaptureSubsystem::RemoveWarning(const FString& Warning)
 {
     if (!Warning.IsEmpty())
     {
-        ActiveWarnings.Remove(Warning);
+        const int32 Removed = ActiveWarnings.Remove(Warning);
+        if (Removed > 0)
+        {
+            AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Warning cleared: %s"), *Warning), GetActiveDiagnosticStep());
+        }
     }
 }
 

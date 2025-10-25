@@ -11,6 +11,7 @@
 #include "Math/UnrealMathUtility.h"
 #include "PixelFormat.h"
 #include "RHI.h"
+#include "UObject/UnrealType.h"
 #if __has_include("RHIAdapter.h")
 #include "RHIAdapter.h"
 #define OMNI_HAS_RHI_ADAPTER 1
@@ -368,6 +369,7 @@ FOmniCaptureNVENCEncoder::~FOmniCaptureNVENCEncoder()
 
 void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, const FString& OutputDirectory)
 {
+    LastErrorMessage.Reset();
     FString Directory = OutputDirectory.IsEmpty() ? (FPaths::ProjectSavedDir() / TEXT("OmniCaptures")) : OutputDirectory;
     Directory = FPaths::ConvertRelativePathToFull(Directory);
     IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
@@ -400,7 +402,12 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     EncoderInput = AVEncoder::FVideoEncoderInput::CreateForRHI(CreateParameters);
     if (!EncoderInput.IsValid())
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to create NVENC encoder input."));
+        const FString FormatName = StaticEnum<EOmniCaptureColorFormat>()->GetNameStringByValue(static_cast<int64>(ColorFormat));
+        LastErrorMessage = FString::Printf(TEXT("Failed to create NVENC encoder input for %dx%d %s frames."),
+            OutputWidth,
+            OutputHeight,
+            *FormatName);
+        UE_LOG(LogTemp, Error, TEXT("%s"), *LastErrorMessage);
         return;
     }
 
@@ -443,7 +450,9 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     VideoEncoder = AVEncoder::FVideoEncoderFactory::Create(*EncoderInput, EncoderInit, MoveTemp(OnEncodedPacket));
     if (!VideoEncoder.IsValid())
     {
-        UE_LOG(LogTemp, Error, TEXT("Failed to create NVENC video encoder."));
+        const FString CodecName = StaticEnum<EOmniCaptureCodec>()->GetNameStringByValue(static_cast<int64>(RequestedCodec));
+        LastErrorMessage = FString::Printf(TEXT("Failed to create NVENC video encoder for codec %s."), *CodecName);
+        UE_LOG(LogTemp, Error, TEXT("%s"), *LastErrorMessage);
         EncoderInput.Reset();
         return;
     }
@@ -451,13 +460,15 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     BitstreamFile.Reset(PlatformFile.OpenWrite(*OutputFilePath, /*bAppend=*/false));
     if (!BitstreamFile)
     {
-        UE_LOG(LogTemp, Warning, TEXT("Unable to open NVENC bitstream output file."));
+        LastErrorMessage = FString::Printf(TEXT("Unable to open NVENC bitstream output file at %s."), *OutputFilePath);
+        UE_LOG(LogTemp, Warning, TEXT("%s"), *LastErrorMessage);
     }
 
     bInitialized = true;
     UE_LOG(LogTemp, Log, TEXT("NVENC encoder ready (%dx%d, %s, ZeroCopy=%s)."), OutputWidth, OutputHeight, bUseHEVC ? TEXT("HEVC") : TEXT("H.264"), bZeroCopyRequested ? TEXT("Yes") : TEXT("No"));
 #else
-    UE_LOG(LogTemp, Warning, TEXT("NVENC is only available on Windows with AVEncoder support."));
+    LastErrorMessage = TEXT("NVENC is only available on Windows builds with AVEncoder support.");
+    UE_LOG(LogTemp, Warning, TEXT("%s"), *LastErrorMessage);
 #endif
 }
 
@@ -526,6 +537,7 @@ void FOmniCaptureNVENCEncoder::Finalize()
 #if OMNI_WITH_AVENCODER
     if (!bInitialized)
     {
+        LastErrorMessage.Reset();
         return;
     }
 
@@ -538,7 +550,8 @@ void FOmniCaptureNVENCEncoder::Finalize()
         BitstreamFile.Reset();
     }
 
-    bInitialized = false;
     UE_LOG(LogTemp, Log, TEXT("NVENC finalize complete -> %s"), *OutputFilePath);
 #endif
+    bInitialized = false;
+    LastErrorMessage.Reset();
 }

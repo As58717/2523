@@ -6,6 +6,7 @@
 #include "Misc/EngineVersionComparison.h"
 #include "ImagePixelData.h"
 #include "RenderGraphResources.h"
+#include "Misc/DateTime.h"
 #include "OmniCaptureTypes.generated.h"
 
 class UCurveFloat;
@@ -78,6 +79,35 @@ enum class EOmniCaptureRingBufferPolicy : uint8 { DropOldest, BlockProducer };
 
 UENUM(BlueprintType)
 enum class EOmniCapturePreviewView : uint8 { StereoComposite, LeftEye, RightEye };
+
+UENUM(BlueprintType)
+enum class EOmniCaptureDiagnosticLevel : uint8
+{
+        Info,
+        Warning,
+        Error
+};
+
+USTRUCT(BlueprintType)
+struct OMNICAPTURE_API FOmniCaptureDiagnosticEntry
+{
+        GENERATED_BODY()
+
+        UPROPERTY(BlueprintReadOnly, Category = "Diagnostics")
+        FDateTime Timestamp;
+
+        UPROPERTY(BlueprintReadOnly, Category = "Diagnostics")
+        float SecondsSinceCaptureStart = 0.0f;
+
+        UPROPERTY(BlueprintReadOnly, Category = "Diagnostics")
+        FString Step;
+
+        UPROPERTY(BlueprintReadOnly, Category = "Diagnostics")
+        FString Message;
+
+        UPROPERTY(BlueprintReadOnly, Category = "Diagnostics")
+        EOmniCaptureDiagnosticLevel Level = EOmniCaptureDiagnosticLevel::Info;
+};
 
 USTRUCT(BlueprintType)
 struct FOmniCaptureRenderFeatureOverrides
