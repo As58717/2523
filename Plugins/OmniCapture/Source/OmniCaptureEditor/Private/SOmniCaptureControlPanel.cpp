@@ -193,6 +193,11 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
         .OnGenerateRow(this, &SOmniCaptureControlPanel::GenerateWarningRow)
         .SelectionMode(ESelectionMode::None);
 
+    DiagnosticListView = SNew(SListView<TSharedPtr<FDiagnosticListItem>>)
+        .ListItemsSource(&DiagnosticItems)
+        .OnGenerateRow(this, &SOmniCaptureControlPanel::GenerateDiagnosticRow)
+        .SelectionMode(ESelectionMode::None);
+
     StereoLayoutOptions.Reset();
     StereoLayoutOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureStereoLayout>>(EOmniCaptureStereoLayout::SideBySide));
     StereoLayoutOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureStereoLayout>>(EOmniCaptureStereoLayout::TopBottom));
@@ -1293,6 +1298,38 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
+            .Padding(0.f, 8.f, 0.f, 0.f)
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .FillWidth(1.f)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("DiagnosticsHeader", "Capture Diagnostics"))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(SButton)
+                    .Text(LOCTEXT("ClearDiagnostics", "Clear Log"))
+                    .OnClicked(this, &SOmniCaptureControlPanel::OnClearDiagnostics)
+                    .IsEnabled(this, &SOmniCaptureControlPanel::CanClearDiagnostics)
+                ]
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.f, 4.f)
+            [
+                SNew(SBox)
+                .HeightOverride(140.f)
+                [
+                    DiagnosticListView.ToSharedRef()
+                ]
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
             .Padding(0.f, 8.f)
             [
                 SNew(SSeparator)
@@ -1338,6 +1375,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
     UpdateOutputDirectoryDisplay();
     RefreshConfigurationSummary();
     UpdatePreviewTextureDisplay();
+    RefreshDiagnosticLog();
     ActiveTimerHandle = RegisterActiveTimer(0.25f, FWidgetActiveTimerDelegate::CreateSP(this, &SOmniCaptureControlPanel::HandleActiveTimer));
 }
 
@@ -1555,6 +1593,7 @@ EActiveTimerReturnType SOmniCaptureControlPanel::HandleActiveTimer(double InCurr
     RefreshFeatureAvailability();
     RefreshStatus();
     UpdatePreviewTextureDisplay();
+    RefreshDiagnosticLog();
     return EActiveTimerReturnType::Continue;
 }
 
@@ -1790,6 +1829,152 @@ TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateWarningRow(TSharedPtr<FS
             SNew(STextBlock)
             .Text(Item.IsValid() ? FText::FromString(*Item) : FText::GetEmpty())
         ];
+}
+
+void SOmniCaptureControlPanel::RefreshDiagnosticLog()
+{
+    TArray<FOmniCaptureDiagnosticEntry> Entries;
+    if (UOmniCaptureSubsystem* Subsystem = GetSubsystem())
+    {
+        Subsystem->GetCaptureDiagnosticLog(Entries);
+    }
+
+    const int32 NewDiagnosticCount = Entries.Num();
+    bHasDiagnostics = NewDiagnosticCount > 0;
+
+    DiagnosticItems.Reset();
+
+    if (bHasDiagnostics)
+    {
+        FNumberFormattingOptions SecondsFormat;
+        SecondsFormat.SetMinimumFractionalDigits(2);
+        SecondsFormat.SetMaximumFractionalDigits(2);
+
+        for (const FOmniCaptureDiagnosticEntry& Entry : Entries)
+        {
+            TSharedPtr<FDiagnosticListItem> Item = MakeShared<FDiagnosticListItem>();
+
+            if (Entry.Timestamp.GetTicks() > 0)
+            {
+                Item->Timestamp = FText::FromString(Entry.Timestamp.ToString(TEXT("%H:%M:%S")));
+            }
+            else
+            {
+                Item->Timestamp = LOCTEXT("DiagnosticsNoTimestamp", "--:--:--");
+            }
+
+            const FText RelativeSeconds = FText::AsNumber(Entry.SecondsSinceCaptureStart, &SecondsFormat);
+            Item->RelativeTime = FText::Format(LOCTEXT("DiagnosticsRelativeFormat", "(+{0}s)"), RelativeSeconds);
+            Item->Step = Entry.Step.IsEmpty() ? LOCTEXT("DiagnosticsDefaultStep", "Subsystem") : FText::FromString(Entry.Step);
+            Item->Message = Entry.Message.IsEmpty() ? LOCTEXT("DiagnosticsNoMessage", "No additional details.") : FText::FromString(Entry.Message);
+            Item->Level = Entry.Level;
+
+            DiagnosticItems.Add(Item);
+        }
+    }
+    else
+    {
+        TSharedPtr<FDiagnosticListItem> Placeholder = MakeShared<FDiagnosticListItem>();
+        Placeholder->bIsPlaceholder = true;
+        Placeholder->Message = LOCTEXT("DiagnosticsPlaceholder", "No diagnostic messages captured yet.");
+        DiagnosticItems.Add(Placeholder);
+    }
+
+    if (DiagnosticListView.IsValid())
+    {
+        DiagnosticListView->RequestListRefresh();
+        if (NewDiagnosticCount > LastDiagnosticCount && NewDiagnosticCount > 0)
+        {
+            DiagnosticListView->ScrollToEnd();
+        }
+    }
+
+    LastDiagnosticCount = NewDiagnosticCount;
+}
+
+TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateDiagnosticRow(TSharedPtr<FDiagnosticListItem> Item, const TSharedRef<STableViewBase>& OwnerTable)
+{
+    check(Item.IsValid());
+
+    if (Item->bIsPlaceholder)
+    {
+        return SNew(STableRow<TSharedPtr<FDiagnosticListItem>>, OwnerTable)
+            [
+                SNew(STextBlock)
+                .Text(Item->Message)
+                .Justification(ETextJustify::Center)
+                .ColorAndOpacity(FSlateColor::UseSubduedForeground())
+            ];
+    }
+
+    const FSlateColor LevelColor = GetDiagnosticLevelColor(Item->Level);
+
+    return SNew(STableRow<TSharedPtr<FDiagnosticListItem>>, OwnerTable)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.f, 0.f, 8.f, 0.f)
+            [
+                SNew(STextBlock)
+                .Text(Item->Timestamp)
+                .ColorAndOpacity(FSlateColor::UseSubduedForeground())
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.f, 0.f, 8.f, 0.f)
+            [
+                SNew(STextBlock)
+                .Text(Item->RelativeTime)
+                .ColorAndOpacity(FSlateColor::UseSubduedForeground())
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.f, 0.f, 8.f, 0.f)
+            [
+                SNew(STextBlock)
+                .Text(Item->Step)
+                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+            ]
+            + SHorizontalBox::Slot()
+            .FillWidth(1.f)
+            [
+                SNew(STextBlock)
+                .Text(Item->Message)
+                .ColorAndOpacity(LevelColor)
+                .AutoWrapText(true)
+            ]
+        ];
+}
+
+FSlateColor SOmniCaptureControlPanel::GetDiagnosticLevelColor(EOmniCaptureDiagnosticLevel Level) const
+{
+    switch (Level)
+    {
+    case EOmniCaptureDiagnosticLevel::Error:
+        return FSlateColor(FLinearColor::Red);
+    case EOmniCaptureDiagnosticLevel::Warning:
+        return FSlateColor(FLinearColor(0.96f, 0.75f, 0.05f));
+    default:
+        return FSlateColor::UseForeground();
+    }
+}
+
+FReply SOmniCaptureControlPanel::OnClearDiagnostics()
+{
+    if (UOmniCaptureSubsystem* Subsystem = GetSubsystem())
+    {
+        Subsystem->ClearCaptureDiagnosticLog();
+    }
+
+    LastDiagnosticCount = 0;
+    RefreshDiagnosticLog();
+    return FReply::Handled();
+}
+
+bool SOmniCaptureControlPanel::CanClearDiagnostics() const
+{
+    return bHasDiagnostics;
 }
 
 void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)

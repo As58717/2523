@@ -62,6 +62,16 @@ private:
         FFeatureToggleState FFmpeg;
     };
 
+    struct FDiagnosticListItem
+    {
+        FText Timestamp;
+        FText RelativeTime;
+        FText Step;
+        FText Message;
+        EOmniCaptureDiagnosticLevel Level = EOmniCaptureDiagnosticLevel::Info;
+        bool bIsPlaceholder = false;
+    };
+
     enum class EMetadataToggle : uint8
     {
         Manifest,
@@ -91,6 +101,7 @@ private:
     void UpdateOutputDirectoryDisplay();
     void RefreshConfigurationSummary();
     void UpdatePreviewTextureDisplay();
+    void RefreshDiagnosticLog();
 
     void ModifyCaptureSettings(TFunctionRef<void(FOmniCaptureSettings&)> Mutator);
     FOmniCaptureSettings GetSettingsSnapshot() const;
@@ -188,6 +199,10 @@ private:
 
     void RebuildWarningList(const TArray<FString>& Warnings);
     TSharedRef<ITableRow> GenerateWarningRow(TSharedPtr<FString> Item, const TSharedRef<STableViewBase>& OwnerTable);
+    TSharedRef<ITableRow> GenerateDiagnosticRow(TSharedPtr<FDiagnosticListItem> Item, const TSharedRef<STableViewBase>& OwnerTable);
+    FSlateColor GetDiagnosticLevelColor(EOmniCaptureDiagnosticLevel Level) const;
+    FReply OnClearDiagnostics();
+    bool CanClearDiagnostics() const;
 
     void RefreshFeatureAvailability(bool bForceRefresh = false);
     bool IsOutputFormatSelectable(EOmniOutputFormat Format) const;
@@ -221,7 +236,11 @@ private:
     TSharedPtr<STextBlock> EncoderAlignmentTextBlock;
     TArray<TSharedPtr<FString>> WarningItems;
     TSharedPtr<SListView<TSharedPtr<FString>>> WarningListView;
+    TArray<TSharedPtr<FDiagnosticListItem>> DiagnosticItems;
+    TSharedPtr<SListView<TSharedPtr<FDiagnosticListItem>>> DiagnosticListView;
     TWeakPtr<FActiveTimerHandle> ActiveTimerHandle;
+    bool bHasDiagnostics = false;
+    int32 LastDiagnosticCount = 0;
 
     TArray<TEnumOptionPtr<EOmniCaptureStereoLayout>> StereoLayoutOptions;
     TArray<TEnumOptionPtr<EOmniOutputFormat>> OutputFormatOptions;
