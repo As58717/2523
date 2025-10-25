@@ -209,6 +209,10 @@ private:
     FText GetOutputFormatTooltip(EOmniOutputFormat Format) const;
     FText GetNVENCWarningText() const;
     EVisibility GetNVENCWarningVisibility() const;
+    FText GetNVENCDllOverrideText() const;
+    void HandleNVENCDllOverrideCommitted(const FText& NewText, ETextCommit::Type CommitType);
+    FText GetAVEncoderModuleOverrideText() const;
+    void HandleAVEncoderModuleOverrideCommitted(const FText& NewText, ETextCommit::Type CommitType);
     bool IsCodecSelectable(EOmniCaptureCodec Codec) const;
     FText GetCodecTooltip(EOmniCaptureCodec Codec) const;
     bool IsColorFormatSelectable(EOmniCaptureColorFormat Format) const;

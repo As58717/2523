@@ -65,10 +65,123 @@ namespace
         FString SessionFailureReason;
         FString CodecFailureReason;
         FString FormatFailureReason;
+        FString ModuleFailureReason;
         FString HardwareFailureReason;
     };
 
     using FNvEncodeAPIGetMaxSupportedVersion = uint32(OMNI_NVENCAPI*)(uint32*);
+
+    FCriticalSection& GetProbeCacheMutex()
+    {
+        static FCriticalSection Mutex;
+        return Mutex;
+    }
+
+    FCriticalSection& GetDllOverrideMutex()
+    {
+        static FCriticalSection Mutex;
+        return Mutex;
+    }
+
+    FCriticalSection& GetModuleOverrideMutex()
+    {
+        static FCriticalSection Mutex;
+        return Mutex;
+    }
+
+    bool& GetProbeValidFlag()
+    {
+        static bool bValid = false;
+        return bValid;
+    }
+
+    FNVENCHardwareProbeResult& GetCachedProbe()
+    {
+        static FNVENCHardwareProbeResult Cached;
+        return Cached;
+    }
+
+    FString& GetDllOverridePath()
+    {
+        static FString OverridePath;
+        return OverridePath;
+    }
+
+    FString& GetModuleOverridePath()
+    {
+        static FString OverridePath;
+        return OverridePath;
+    }
+
+    FString FetchModuleOverridePath()
+    {
+        FScopeLock ModuleLock(&GetModuleOverrideMutex());
+        return GetModuleOverridePath();
+    }
+
+    FString ResolveModuleOverrideDirectory(const FString& OverridePath, TArray<FString>* OutFailureMessages = nullptr)
+    {
+        FString Candidate = OverridePath;
+        Candidate.TrimStartAndEndInline();
+
+        if (Candidate.IsEmpty())
+        {
+            return FString();
+        }
+
+        if (FPaths::IsRelative(Candidate))
+        {
+            Candidate = FPaths::ConvertRelativePathToFull(Candidate);
+        }
+        FPaths::MakePlatformFilename(Candidate);
+
+        if (Candidate.IsEmpty())
+        {
+            return FString();
+        }
+
+        if (FPaths::DirectoryExists(Candidate))
+        {
+            return Candidate;
+        }
+
+        if (FPaths::FileExists(Candidate))
+        {
+            const FString Extension = FPaths::GetExtension(Candidate, true);
+            if (Extension.Equals(TEXT(".dll"), ESearchCase::IgnoreCase) || Extension.Equals(TEXT(".modules"), ESearchCase::IgnoreCase))
+            {
+                FString Directory = FPaths::GetPath(Candidate);
+                FPaths::MakePlatformFilename(Directory);
+                if (FPaths::DirectoryExists(Directory))
+                {
+                    return Directory;
+                }
+                if (OutFailureMessages)
+                {
+                    OutFailureMessages->Add(FString::Printf(TEXT("AVEncoder override directory missing: %s."), *Directory));
+                }
+            }
+            else if (OutFailureMessages)
+            {
+                OutFailureMessages->Add(FString::Printf(TEXT("AVEncoder override must point to a directory or AVEncoder binary: %s."), *Candidate));
+            }
+        }
+        else if (OutFailureMessages)
+        {
+            OutFailureMessages->Add(FString::Printf(TEXT("AVEncoder override path not found: %s."), *Candidate));
+        }
+
+        return FString();
+    }
+
+    void AddModuleOverrideDirectoryIfPresent(const FString& OverridePath, TArray<FString>* OutFailureMessages = nullptr)
+    {
+        const FString Directory = ResolveModuleOverrideDirectory(OverridePath, OutFailureMessages);
+        if (!Directory.IsEmpty())
+        {
+            FModuleManager::Get().AddBinariesDirectory(*Directory, false);
+        }
+    }
 
     bool TryCreateEncoderSession(AVEncoder::ECodec Codec, AVEncoder::EVideoFormat Format, FString& OutFailureReason)
     {
@@ -128,10 +241,79 @@ namespace
     {
         FNVENCHardwareProbeResult Result;
 
-        void* NvencHandle = FPlatformProcess::GetDllHandle(TEXT("nvEncodeAPI64.dll"));
+        FString OverridePath;
+        {
+            FScopeLock OverrideLock(&GetDllOverrideMutex());
+            OverridePath = GetDllOverridePath();
+        }
+
+        OverridePath.TrimStartAndEndInline();
+        FString NormalizedOverridePath = OverridePath;
+        if (!NormalizedOverridePath.IsEmpty())
+        {
+            NormalizedOverridePath = FPaths::ConvertRelativePathToFull(NormalizedOverridePath);
+            FPaths::MakePlatformFilename(NormalizedOverridePath);
+        }
+
+        FString OverrideCandidate = NormalizedOverridePath;
+        if (!OverrideCandidate.IsEmpty())
+        {
+            const FString Extension = FPaths::GetExtension(OverrideCandidate, true);
+            if (!Extension.Equals(TEXT(".dll"), ESearchCase::IgnoreCase))
+            {
+                OverrideCandidate = FPaths::Combine(OverrideCandidate, TEXT("nvEncodeAPI64.dll"));
+            }
+            FPaths::MakePlatformFilename(OverrideCandidate);
+        }
+
+        const FString ModuleOverride = FetchModuleOverridePath();
+        TArray<FString> ModuleFailureMessages;
+        AddModuleOverrideDirectoryIfPresent(ModuleOverride, &ModuleFailureMessages);
+
+        void* NvencHandle = nullptr;
+        FString LoadedFrom;
+        TArray<FString> FailureMessages;
+
+        if (!OverrideCandidate.IsEmpty())
+        {
+            if (!FPaths::FileExists(*OverrideCandidate))
+            {
+                FailureMessages.Add(FString::Printf(TEXT("Override path not found: %s."), *OverrideCandidate));
+            }
+            else
+            {
+                NvencHandle = FPlatformProcess::GetDllHandle(*OverrideCandidate);
+                if (NvencHandle)
+                {
+                    LoadedFrom = OverrideCandidate;
+                }
+                else
+                {
+                    FailureMessages.Add(FString::Printf(TEXT("Failed to load override DLL: %s."), *OverrideCandidate));
+                }
+            }
+        }
+
+        if (!NvencHandle)
+        {
+            NvencHandle = FPlatformProcess::GetDllHandle(TEXT("nvEncodeAPI64.dll"));
+            if (NvencHandle)
+            {
+                LoadedFrom = TEXT("system search paths");
+            }
+            else
+            {
+                FailureMessages.Add(TEXT("Failed to load nvEncodeAPI64.dll from system search paths."));
+            }
+        }
+
         if (NvencHandle)
         {
             Result.bDllPresent = true;
+            if (!LoadedFrom.IsEmpty())
+            {
+                UE_LOG(LogTemp, Verbose, TEXT("NVENC probe loading nvEncodeAPI64.dll from %s"), *LoadedFrom);
+            }
             FNvEncodeAPIGetMaxSupportedVersion NvEncodeAPIGetMaxSupportedVersion = reinterpret_cast<FNvEncodeAPIGetMaxSupportedVersion>(FPlatformProcess::GetDllExport(NvencHandle, TEXT("NvEncodeAPIGetMaxSupportedVersion")));
             if (NvEncodeAPIGetMaxSupportedVersion)
             {
@@ -154,7 +336,9 @@ namespace
         }
         else
         {
-            Result.DllFailureReason = TEXT("Failed to load nvEncodeAPI64.dll");
+            Result.DllFailureReason = FailureMessages.Num() > 0
+                ? FString::Join(FailureMessages, TEXT(" "))
+                : TEXT("Failed to load nvEncodeAPI64.dll.");
         }
 
         if (!Result.bDllPresent)
@@ -169,9 +353,31 @@ namespace
             return Result;
         }
 
-        if (!FModuleManager::Get().IsModuleLoaded(TEXT("AVEncoder")))
+        static const FName AVEncoderModuleName(TEXT("AVEncoder"));
+        if (!FModuleManager::Get().IsModuleLoaded(AVEncoderModuleName))
         {
-            FModuleManager::Get().LoadModule(TEXT("AVEncoder"));
+            if (!FModuleManager::Get().LoadModule(AVEncoderModuleName))
+            {
+                ModuleFailureMessages.Add(TEXT("FModuleManager::LoadModule returned null for AVEncoder."));
+            }
+        }
+
+        if (!FModuleManager::Get().IsModuleLoaded(AVEncoderModuleName))
+        {
+            if (ModuleFailureMessages.Num() == 0)
+            {
+                if (!ModuleOverride.IsEmpty())
+                {
+                    ModuleFailureMessages.Add(FString::Printf(TEXT("Failed to load AVEncoder module from %s."), *ModuleOverride));
+                }
+                else
+                {
+                    ModuleFailureMessages.Add(TEXT("AVEncoder module is not available in the current build."));
+                }
+            }
+            Result.ModuleFailureReason = FString::Join(ModuleFailureMessages, TEXT(" "));
+            Result.HardwareFailureReason = Result.ModuleFailureReason;
+            return Result;
         }
 
         FString SessionFailure;
@@ -230,12 +436,12 @@ namespace
 
     const FNVENCHardwareProbeResult& GetNVENCHardwareProbe()
     {
-        static FNVENCHardwareProbeResult CachedResult;
-        static bool bHasRun = false;
-        if (!bHasRun)
+        FScopeLock CacheLock(&GetProbeCacheMutex());
+        if (!GetProbeValidFlag())
         {
-            bHasRun = true;
-            CachedResult = RunNVENCHardwareProbe();
+            GetCachedProbe() = RunNVENCHardwareProbe();
+            GetProbeValidFlag() = true;
+            const FNVENCHardwareProbeResult& CachedResult = GetCachedProbe();
             if (!CachedResult.bDllPresent || !CachedResult.bApisReady || !CachedResult.bSessionOpenable)
             {
                 UE_LOG(LogTemp, Warning, TEXT("NVENC probe failed (Dll=%s, Api=%s, Session=%s). Reasons: %s | %s | %s"),
@@ -247,7 +453,7 @@ namespace
                     CachedResult.SessionFailureReason.IsEmpty() ? TEXT("<none>") : *CachedResult.SessionFailureReason);
             }
         }
-        return CachedResult;
+        return GetCachedProbe();
     }
 #endif
 }
@@ -291,6 +497,7 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
     Caps.SessionFailureReason = Probe.SessionFailureReason;
     Caps.CodecFailureReason = Probe.CodecFailureReason;
     Caps.FormatFailureReason = Probe.FormatFailureReason;
+    Caps.ModuleFailureReason = Probe.ModuleFailureReason;
     Caps.HardwareFailureReason = Probe.HardwareFailureReason;
 #else
     Caps.bHardwareAvailable = false;
@@ -362,6 +569,77 @@ bool FOmniCaptureNVENCEncoder::SupportsZeroCopyRHI()
 #endif
 }
 
+void FOmniCaptureNVENCEncoder::SetDllOverridePath(const FString& InOverridePath)
+{
+#if OMNI_WITH_AVENCODER
+    FString NormalizedPath = InOverridePath;
+    NormalizedPath.TrimStartAndEndInline();
+    if (!NormalizedPath.IsEmpty())
+    {
+        NormalizedPath = FPaths::ConvertRelativePathToFull(NormalizedPath);
+        FPaths::MakePlatformFilename(NormalizedPath);
+    }
+
+    bool bChanged = false;
+    {
+        FScopeLock OverrideLock(&GetDllOverrideMutex());
+        if (!GetDllOverridePath().Equals(NormalizedPath, ESearchCase::CaseSensitive))
+        {
+            GetDllOverridePath() = NormalizedPath;
+            bChanged = true;
+        }
+    }
+
+    if (bChanged)
+    {
+        FScopeLock CacheLock(&GetProbeCacheMutex());
+        GetProbeValidFlag() = false;
+    }
+#else
+    (void)InOverridePath;
+#endif
+}
+
+void FOmniCaptureNVENCEncoder::SetAVEncoderModuleOverridePath(const FString& InOverridePath)
+{
+#if OMNI_WITH_AVENCODER
+    FString NormalizedPath = InOverridePath;
+    NormalizedPath.TrimStartAndEndInline();
+    if (!NormalizedPath.IsEmpty())
+    {
+        NormalizedPath = FPaths::ConvertRelativePathToFull(NormalizedPath);
+        FPaths::MakePlatformFilename(NormalizedPath);
+    }
+
+    bool bChanged = false;
+    {
+        FScopeLock OverrideLock(&GetModuleOverrideMutex());
+        if (!GetModuleOverridePath().Equals(NormalizedPath, ESearchCase::CaseSensitive))
+        {
+            GetModuleOverridePath() = NormalizedPath;
+            bChanged = true;
+        }
+    }
+
+    if (bChanged)
+    {
+        AddModuleOverrideDirectoryIfPresent(NormalizedPath);
+        FScopeLock CacheLock(&GetProbeCacheMutex());
+        GetProbeValidFlag() = false;
+    }
+#else
+    (void)InOverridePath;
+#endif
+}
+
+void FOmniCaptureNVENCEncoder::InvalidateCachedCapabilities()
+{
+#if OMNI_WITH_AVENCODER
+    FScopeLock CacheLock(&GetProbeCacheMutex());
+    GetProbeValidFlag() = false;
+#endif
+}
+
 FOmniCaptureNVENCEncoder::~FOmniCaptureNVENCEncoder()
 {
     Finalize();
@@ -386,9 +664,17 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     const int32 OutputWidth = OutputSize.X;
     const int32 OutputHeight = OutputSize.Y;
 
+    const FString ModuleOverride = FetchModuleOverridePath();
+    AddModuleOverrideDirectoryIfPresent(ModuleOverride);
+
     if (!FModuleManager::Get().IsModuleLoaded(TEXT("AVEncoder")))
     {
-        FModuleManager::Get().LoadModule(TEXT("AVEncoder"));
+        if (!FModuleManager::Get().LoadModule(TEXT("AVEncoder")))
+        {
+            LastErrorMessage = TEXT("Failed to load AVEncoder module for NVENC initialization.");
+            UE_LOG(LogTemp, Error, TEXT("%s"), *LastErrorMessage);
+            return;
+        }
     }
 
     AVEncoder::FVideoEncoderInput::FCreateParameters CreateParameters;

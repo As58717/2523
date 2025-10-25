@@ -36,6 +36,7 @@ struct FOmniNVENCCapabilities
     FString SessionFailureReason;
     FString CodecFailureReason;
     FString FormatFailureReason;
+    FString ModuleFailureReason;
     FString HardwareFailureReason;
     FString AdapterName;
     FString DriverVersion;
@@ -55,6 +56,9 @@ public:
     static FOmniNVENCCapabilities QueryCapabilities();
     static bool SupportsColorFormat(EOmniCaptureColorFormat Format);
     static bool SupportsZeroCopyRHI();
+    static void SetDllOverridePath(const FString& InOverridePath);
+    static void SetAVEncoderModuleOverridePath(const FString& InOverridePath);
+    static void InvalidateCachedCapabilities();
 
     bool IsInitialized() const { return bInitialized; }
     FString GetOutputFilePath() const { return OutputFilePath; }
