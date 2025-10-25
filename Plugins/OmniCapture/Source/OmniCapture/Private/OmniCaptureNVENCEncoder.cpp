@@ -28,6 +28,12 @@
 
 namespace
 {
+#if PLATFORM_WINDOWS
+    #define OMNI_NVENCAPI __stdcall
+#else
+    #define OMNI_NVENCAPI
+#endif
+
 #if OMNI_WITH_AVENCODER
     AVEncoder::EVideoFormat ToVideoFormat(EOmniCaptureColorFormat Format)
     {
@@ -42,8 +48,211 @@ namespace
             return AVEncoder::EVideoFormat::BGRA8;
         }
     }
+
+    struct FNVENCHardwareProbeResult
+    {
+        bool bDllPresent = false;
+        bool bApisReady = false;
+        bool bSessionOpenable = false;
+        bool bSupportsH264 = false;
+        bool bSupportsHEVC = false;
+        bool bSupportsNV12 = false;
+        bool bSupportsP010 = false;
+        bool bSupportsBGRA = false;
+        FString DllFailureReason;
+        FString ApiFailureReason;
+        FString SessionFailureReason;
+        FString CodecFailureReason;
+        FString FormatFailureReason;
+        FString HardwareFailureReason;
+    };
+
+    using FNvEncodeAPIGetMaxSupportedVersion = uint32(OMNI_NVENCAPI*)(uint32*);
+
+    bool TryCreateEncoderSession(AVEncoder::ECodec Codec, AVEncoder::EVideoFormat Format, FString& OutFailureReason)
+    {
+        constexpr int32 TestWidth = 256;
+        constexpr int32 TestHeight = 144;
+
+        AVEncoder::FVideoEncoderInput::FCreateParameters CreateParameters;
+        CreateParameters.Width = TestWidth;
+        CreateParameters.Height = TestHeight;
+        CreateParameters.MaxBufferDimensions = FIntPoint(TestWidth, TestHeight);
+        CreateParameters.Format = Format;
+        CreateParameters.DebugName = TEXT("OmniNVENCProbe");
+        CreateParameters.bAutoCopy = true;
+
+        TSharedPtr<AVEncoder::FVideoEncoderInput> EncoderInput = AVEncoder::FVideoEncoderInput::CreateForRHI(CreateParameters);
+        if (!EncoderInput.IsValid())
+        {
+            OutFailureReason = TEXT("Failed to create AVEncoder input for probe");
+            return false;
+        }
+
+        AVEncoder::FVideoEncoder::FLayerConfig LayerConfig;
+        LayerConfig.Width = TestWidth;
+        LayerConfig.Height = TestHeight;
+        LayerConfig.MaxFramerate = 60;
+        LayerConfig.TargetBitrate = 5 * 1000 * 1000;
+        LayerConfig.MaxBitrate = 10 * 1000 * 1000;
+
+        AVEncoder::FVideoEncoder::FCodecConfig CodecConfig;
+        CodecConfig.GOPLength = 30;
+        CodecConfig.MaxNumBFrames = 0;
+        CodecConfig.bEnableFrameReordering = false;
+
+        AVEncoder::FVideoEncoder::FInit EncoderInit;
+        EncoderInit.Codec = Codec;
+        EncoderInit.CodecConfig = CodecConfig;
+        EncoderInit.Layers.Add(LayerConfig);
+
+        auto OnEncodedPacket = AVEncoder::FVideoEncoder::FOnEncodedPacket::CreateLambda([](const AVEncoder::FVideoEncoder::FEncodedPacket&)
+        {
+        });
+
+        TSharedPtr<AVEncoder::FVideoEncoder> VideoEncoder = AVEncoder::FVideoEncoderFactory::Create(*EncoderInput, EncoderInit, MoveTemp(OnEncodedPacket));
+        if (!VideoEncoder.IsValid())
+        {
+            OutFailureReason = TEXT("Failed to create AVEncoder NVENC instance");
+            return false;
+        }
+
+        VideoEncoder.Reset();
+        EncoderInput.Reset();
+
+        return true;
+    }
+
+    FNVENCHardwareProbeResult RunNVENCHardwareProbe()
+    {
+        FNVENCHardwareProbeResult Result;
+
+        void* NvencHandle = FPlatformProcess::GetDllHandle(TEXT("nvEncodeAPI64.dll"));
+        if (NvencHandle)
+        {
+            Result.bDllPresent = true;
+            FNvEncodeAPIGetMaxSupportedVersion NvEncodeAPIGetMaxSupportedVersion = reinterpret_cast<FNvEncodeAPIGetMaxSupportedVersion>(FPlatformProcess::GetDllExport(NvencHandle, TEXT("NvEncodeAPIGetMaxSupportedVersion")));
+            if (NvEncodeAPIGetMaxSupportedVersion)
+            {
+                uint32 MaxVersion = 0;
+                const uint32 NvStatus = NvEncodeAPIGetMaxSupportedVersion(&MaxVersion);
+                if (NvStatus == 0 && MaxVersion != 0)
+                {
+                    Result.bApisReady = true;
+                }
+                else
+                {
+                    Result.ApiFailureReason = FString::Printf(TEXT("NvEncodeAPIGetMaxSupportedVersion failed (status=0x%08x, version=%u)"), NvStatus, MaxVersion);
+                }
+            }
+            else
+            {
+                Result.ApiFailureReason = TEXT("NvEncodeAPIGetMaxSupportedVersion export missing in nvEncodeAPI64.dll");
+            }
+            FPlatformProcess::FreeDllHandle(NvencHandle);
+        }
+        else
+        {
+            Result.DllFailureReason = TEXT("Failed to load nvEncodeAPI64.dll");
+        }
+
+        if (!Result.bDllPresent)
+        {
+            Result.HardwareFailureReason = Result.DllFailureReason.IsEmpty() ? TEXT("NVENC runtime DLL missing") : Result.DllFailureReason;
+            return Result;
+        }
+
+        if (!Result.bApisReady)
+        {
+            Result.HardwareFailureReason = Result.ApiFailureReason.IsEmpty() ? TEXT("Failed to query NVENC API version") : Result.ApiFailureReason;
+            return Result;
+        }
+
+        if (!FModuleManager::Get().IsModuleLoaded(TEXT("AVEncoder")))
+        {
+            FModuleManager::Get().LoadModule(TEXT("AVEncoder"));
+        }
+
+        FString SessionFailure;
+        if (TryCreateEncoderSession(AVEncoder::ECodec::H264, AVEncoder::EVideoFormat::NV12, SessionFailure))
+        {
+            Result.bSessionOpenable = true;
+            Result.bSupportsH264 = true;
+            Result.bSupportsNV12 = true;
+
+            FString HevcFailure;
+            if (TryCreateEncoderSession(AVEncoder::ECodec::HEVC, AVEncoder::EVideoFormat::NV12, HevcFailure))
+            {
+                Result.bSupportsHEVC = true;
+            }
+            else
+            {
+                Result.CodecFailureReason = HevcFailure;
+            }
+
+            FString P010Failure;
+            if (TryCreateEncoderSession(AVEncoder::ECodec::HEVC, AVEncoder::EVideoFormat::P010, P010Failure))
+            {
+                Result.bSupportsP010 = true;
+            }
+            else
+            {
+                Result.FormatFailureReason = P010Failure;
+            }
+
+            FString BgraFailure;
+            if (TryCreateEncoderSession(AVEncoder::ECodec::H264, AVEncoder::EVideoFormat::BGRA8, BgraFailure))
+            {
+                Result.bSupportsBGRA = true;
+            }
+            else if (Result.FormatFailureReason.IsEmpty())
+            {
+                Result.FormatFailureReason = BgraFailure;
+            }
+        }
+        else
+        {
+            Result.SessionFailureReason = SessionFailure;
+            Result.HardwareFailureReason = SessionFailure;
+            return Result;
+        }
+
+        Result.HardwareFailureReason = TEXT("");
+
+        UE_LOG(LogTemp, Log, TEXT("NVENC probe succeeded (NV12=%s, P010=%s, HEVC=%s, BGRA=%s)"),
+            Result.bSupportsNV12 ? TEXT("Yes") : TEXT("No"),
+            Result.bSupportsP010 ? TEXT("Yes") : TEXT("No"),
+            Result.bSupportsHEVC ? TEXT("Yes") : TEXT("No"),
+            Result.bSupportsBGRA ? TEXT("Yes") : TEXT("No"));
+        return Result;
+    }
+
+    const FNVENCHardwareProbeResult& GetNVENCHardwareProbe()
+    {
+        static FNVENCHardwareProbeResult CachedResult;
+        static bool bHasRun = false;
+        if (!bHasRun)
+        {
+            bHasRun = true;
+            CachedResult = RunNVENCHardwareProbe();
+            if (!CachedResult.bDllPresent || !CachedResult.bApisReady || !CachedResult.bSessionOpenable)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("NVENC probe failed (Dll=%s, Api=%s, Session=%s). Reasons: %s | %s | %s"),
+                    CachedResult.bDllPresent ? TEXT("Yes") : TEXT("No"),
+                    CachedResult.bApisReady ? TEXT("Yes") : TEXT("No"),
+                    CachedResult.bSessionOpenable ? TEXT("Yes") : TEXT("No"),
+                    CachedResult.DllFailureReason.IsEmpty() ? TEXT("<none>") : *CachedResult.DllFailureReason,
+                    CachedResult.ApiFailureReason.IsEmpty() ? TEXT("<none>") : *CachedResult.ApiFailureReason,
+                    CachedResult.SessionFailureReason.IsEmpty() ? TEXT("<none>") : *CachedResult.SessionFailureReason);
+            }
+        }
+        return CachedResult;
+    }
 #endif
 }
+#if PLATFORM_WINDOWS
+#undef OMNI_NVENCAPI
+#endif
 
 FOmniCaptureNVENCEncoder::FOmniCaptureNVENCEncoder()
 {
@@ -52,22 +261,8 @@ FOmniCaptureNVENCEncoder::FOmniCaptureNVENCEncoder()
 bool FOmniCaptureNVENCEncoder::IsNVENCAvailable()
 {
 #if OMNI_WITH_AVENCODER && PLATFORM_WINDOWS
-    static bool bChecked = false;
-    static bool bAvailable = false;
-
-    if (!bChecked)
-    {
-        bChecked = true;
-
-        void* NvencHandle = FPlatformProcess::GetDllHandle(TEXT("nvEncodeAPI64.dll"));
-        if (NvencHandle)
-        {
-            FPlatformProcess::FreeDllHandle(NvencHandle);
-            bAvailable = true;
-        }
-    }
-
-    return bAvailable;
+    const FNVENCHardwareProbeResult& Probe = GetNVENCHardwareProbe();
+    return Probe.bDllPresent && Probe.bApisReady && Probe.bSessionOpenable;
 #else
     return false;
 #endif
@@ -77,14 +272,29 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
 {
     FOmniNVENCCapabilities Caps;
 
-#if OMNI_WITH_AVENCODER
-    Caps.bHardwareAvailable = IsNVENCAvailable();
-    Caps.bSupportsNV12 = SupportsColorFormat(EOmniCaptureColorFormat::NV12);
-    Caps.bSupportsP010 = SupportsColorFormat(EOmniCaptureColorFormat::P010);
-    Caps.bSupportsHEVC = Caps.bHardwareAvailable;
+#if OMNI_WITH_AVENCODER && PLATFORM_WINDOWS
+    const FNVENCHardwareProbeResult& Probe = GetNVENCHardwareProbe();
+
+    Caps.bDllPresent = Probe.bDllPresent;
+    Caps.bApisReady = Probe.bApisReady;
+    Caps.bSessionOpenable = Probe.bSessionOpenable;
+    Caps.bSupportsHEVC = Probe.bSupportsHEVC;
+    Caps.bSupportsNV12 = Probe.bSupportsNV12 && SupportsColorFormat(EOmniCaptureColorFormat::NV12);
+    Caps.bSupportsP010 = Probe.bSupportsP010 && SupportsColorFormat(EOmniCaptureColorFormat::P010);
+    Caps.bSupportsBGRA = Probe.bSupportsBGRA && SupportsColorFormat(EOmniCaptureColorFormat::BGRA);
     Caps.bSupports10Bit = Caps.bSupportsP010;
+    Caps.bHardwareAvailable = Caps.bDllPresent && Caps.bApisReady && Caps.bSessionOpenable;
+
+    Caps.DllFailureReason = Probe.DllFailureReason;
+    Caps.ApiFailureReason = Probe.ApiFailureReason;
+    Caps.SessionFailureReason = Probe.SessionFailureReason;
+    Caps.CodecFailureReason = Probe.CodecFailureReason;
+    Caps.FormatFailureReason = Probe.FormatFailureReason;
+    Caps.HardwareFailureReason = Probe.HardwareFailureReason;
 #else
     Caps.bHardwareAvailable = false;
+    Caps.DllFailureReason = TEXT("NVENC support is only available on Windows builds with AVEncoder.");
+    Caps.HardwareFailureReason = Caps.DllFailureReason;
 #endif
 
     Caps.AdapterName = FPlatformMisc::GetPrimaryGPUBrand();

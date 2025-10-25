@@ -816,22 +816,50 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
 
         if (!Caps.bHardwareAvailable)
         {
-            ActiveWarnings.Add(TEXT("NVENC hardware encoder unavailable"));
+            if (!Caps.HardwareFailureReason.IsEmpty())
+            {
+                ActiveWarnings.Add(FString::Printf(TEXT("NVENC hardware encoder unavailable: %s"), *Caps.HardwareFailureReason));
+            }
+            else
+            {
+                ActiveWarnings.Add(TEXT("NVENC hardware encoder unavailable"));
+            }
             bResult = false;
         }
         if (ActiveSettings.Codec == EOmniCaptureCodec::HEVC && !Caps.bSupportsHEVC)
         {
-            ActiveWarnings.Add(TEXT("HEVC codec unsupported by detected NVENC hardware"));
+            if (!Caps.CodecFailureReason.IsEmpty())
+            {
+                ActiveWarnings.Add(FString::Printf(TEXT("HEVC codec unsupported: %s"), *Caps.CodecFailureReason));
+            }
+            else
+            {
+                ActiveWarnings.Add(TEXT("HEVC codec unsupported by detected NVENC hardware"));
+            }
             bResult = false;
         }
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::P010 && !Caps.bSupports10Bit)
         {
-            ActiveWarnings.Add(TEXT("P010 / Main10 NVENC path unavailable on this GPU"));
+            if (!Caps.FormatFailureReason.IsEmpty())
+            {
+                ActiveWarnings.Add(FString::Printf(TEXT("P010 / Main10 NVENC path unavailable: %s"), *Caps.FormatFailureReason));
+            }
+            else
+            {
+                ActiveWarnings.Add(TEXT("P010 / Main10 NVENC path unavailable on this GPU"));
+            }
             bResult = false;
         }
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::NV12 && !Caps.bSupportsNV12)
         {
-            ActiveWarnings.Add(TEXT("NV12 NVENC path unavailable on this GPU"));
+            if (!Caps.FormatFailureReason.IsEmpty())
+            {
+                ActiveWarnings.Add(FString::Printf(TEXT("NV12 NVENC path unavailable: %s"), *Caps.FormatFailureReason));
+            }
+            else
+            {
+                ActiveWarnings.Add(TEXT("NV12 NVENC path unavailable on this GPU"));
+            }
             bResult = false;
         }
 
@@ -910,19 +938,6 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
 
 bool UOmniCaptureSubsystem::ApplyFallbacks()
 {
-    if (ActiveSettings.OutputFormat == EOmniOutputFormat::NVENCHardware && !FOmniCaptureNVENCEncoder::IsNVENCAvailable())
-    {
-        if (ActiveSettings.bAllowNVENCFallback)
-        {
-            ActiveWarnings.Add(TEXT("Falling back to PNG sequence because NVENC is unavailable"));
-            ActiveSettings.OutputFormat = EOmniOutputFormat::ImageSequence;
-            return true;
-        }
-
-        ActiveWarnings.Add(TEXT("NVENC required but unavailable"));
-        return false;
-    }
-
     if (ActiveSettings.OutputFormat == EOmniOutputFormat::NVENCHardware)
     {
 #if !PLATFORM_WINDOWS
@@ -933,21 +948,38 @@ bool UOmniCaptureSubsystem::ApplyFallbacks()
 
         const FOmniNVENCCapabilities Caps = FOmniCaptureNVENCEncoder::QueryCapabilities();
 
+        if (!Caps.bHardwareAvailable)
+        {
+            const FString Reason = Caps.HardwareFailureReason.IsEmpty() ? TEXT("NVENC is unavailable") : Caps.HardwareFailureReason;
+            if (ActiveSettings.bAllowNVENCFallback)
+            {
+                ActiveWarnings.Add(FString::Printf(TEXT("Falling back to PNG sequence because NVENC is unavailable: %s"), *Reason));
+                ActiveSettings.OutputFormat = EOmniOutputFormat::ImageSequence;
+                return true;
+            }
+
+            ActiveWarnings.Add(FString::Printf(TEXT("NVENC required but unavailable: %s"), *Reason));
+            return false;
+        }
+
         if (ActiveSettings.Codec == EOmniCaptureCodec::HEVC && !Caps.bSupportsHEVC)
         {
-            ActiveWarnings.Add(TEXT("HEVC unsupported - falling back to H.264"));
+            const FString Reason = Caps.CodecFailureReason.IsEmpty() ? TEXT("HEVC unsupported - falling back to H.264") : FString::Printf(TEXT("HEVC unsupported (%s) - falling back to H.264"), *Caps.CodecFailureReason);
+            ActiveWarnings.Add(Reason);
             ActiveSettings.Codec = EOmniCaptureCodec::H264;
         }
 
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::P010 && !Caps.bSupports10Bit)
         {
-            ActiveWarnings.Add(TEXT("P010 unsupported - switching to NV12"));
+            const FString Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("P010 unsupported - switching to NV12") : FString::Printf(TEXT("P010 unsupported (%s) - switching to NV12"), *Caps.FormatFailureReason);
+            ActiveWarnings.Add(Reason);
             ActiveSettings.NVENCColorFormat = EOmniCaptureColorFormat::NV12;
         }
 
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::NV12 && !Caps.bSupportsNV12)
         {
-            ActiveWarnings.Add(TEXT("NV12 unsupported - switching to BGRA"));
+            const FString Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("NV12 unsupported - switching to BGRA") : FString::Printf(TEXT("NV12 unsupported (%s) - switching to BGRA"), *Caps.FormatFailureReason);
+            ActiveWarnings.Add(Reason);
             ActiveSettings.NVENCColorFormat = EOmniCaptureColorFormat::BGRA;
         }
 
