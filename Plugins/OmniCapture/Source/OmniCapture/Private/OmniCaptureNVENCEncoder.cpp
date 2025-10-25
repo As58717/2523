@@ -2,6 +2,7 @@
 
 #include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformMisc.h"
+#include "HAL/PlatformProcess.h"
 #include "Misc/EngineVersionComparison.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
@@ -50,8 +51,23 @@ FOmniCaptureNVENCEncoder::FOmniCaptureNVENCEncoder()
 
 bool FOmniCaptureNVENCEncoder::IsNVENCAvailable()
 {
-#if OMNI_WITH_AVENCODER
-    return true;
+#if OMNI_WITH_AVENCODER && PLATFORM_WINDOWS
+    static bool bChecked = false;
+    static bool bAvailable = false;
+
+    if (!bChecked)
+    {
+        bChecked = true;
+
+        void* NvencHandle = FPlatformProcess::GetDllHandle(TEXT("nvEncodeAPI64.dll"));
+        if (NvencHandle)
+        {
+            FPlatformProcess::FreeDllHandle(NvencHandle);
+            bAvailable = true;
+        }
+    }
+
+    return bAvailable;
 #else
     return false;
 #endif
