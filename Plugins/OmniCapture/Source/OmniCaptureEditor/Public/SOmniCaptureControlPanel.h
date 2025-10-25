@@ -80,12 +80,19 @@ private:
         FFmpeg
     };
 
+    enum class EOutputDirectoryMode : uint8
+    {
+        ProjectDefault,
+        Custom
+    };
+
     FReply OnStartCapture();
     FReply OnStopCapture();
     FReply OnCaptureStill();
     FReply OnTogglePause();
     FReply OnOpenLastOutput();
     FReply OnBrowseOutputDirectory();
+    bool TrySelectCustomOutputDirectory();
     bool CanStartCapture() const;
     bool CanStopCapture() const;
     bool CanCaptureStill() const;
@@ -139,6 +146,8 @@ private:
     TSharedRef<SWidget> GenerateImageFormatOption(TEnumOptionPtr<EOmniCaptureImageFormat> InValue) const;
     void HandlePNGBitDepthChanged(TEnumOptionPtr<EOmniCapturePNGBitDepth> NewValue, ESelectInfo::Type SelectInfo);
     TSharedRef<SWidget> GeneratePNGBitDepthOption(TEnumOptionPtr<EOmniCapturePNGBitDepth> InValue) const;
+    void HandleOutputDirectoryModeChanged(TEnumOptionPtr<EOutputDirectoryMode> NewValue, ESelectInfo::Type SelectInfo);
+    TSharedRef<SWidget> GenerateOutputDirectoryModeOption(TEnumOptionPtr<EOutputDirectoryMode> InValue) const;
 
     int32 GetPerEyeWidthValue() const;
     int32 GetPerEyeHeightValue() const;
@@ -176,6 +185,7 @@ private:
     TEnumOptionPtr<EOmniCaptureFisheyeType> FindFisheyeTypeOption(EOmniCaptureFisheyeType Type) const;
     TEnumOptionPtr<EOmniCaptureImageFormat> FindImageFormatOption(EOmniCaptureImageFormat Format) const;
     TEnumOptionPtr<EOmniCapturePNGBitDepth> FindPNGBitDepthOption(EOmniCapturePNGBitDepth BitDepth) const;
+    TEnumOptionPtr<EOutputDirectoryMode> FindOutputDirectoryModeOption(EOutputDirectoryMode Mode) const;
 
     void HandleOutputFormatChanged(TEnumOptionPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo);
     void HandleCodecChanged(TEnumOptionPtr<EOmniCaptureCodec> NewCodec, ESelectInfo::Type SelectInfo);
@@ -222,6 +232,9 @@ private:
     FText GetFFmpegMetadataTooltip() const;
     FText GetFFmpegWarningText() const;
     EVisibility GetFFmpegWarningVisibility() const;
+    EOutputDirectoryMode GetCurrentOutputDirectoryMode() const;
+    void ApplyOutputDirectoryMode(EOutputDirectoryMode Mode);
+    FText GetOutputDirectoryModeTooltip(EOutputDirectoryMode Mode) const;
 
 private:
     TWeakObjectPtr<UOmniCaptureEditorSettings> SettingsObject;
@@ -253,6 +266,7 @@ private:
     TArray<TEnumOptionPtr<EOmniCaptureFisheyeType>> FisheyeTypeOptions;
     TArray<TEnumOptionPtr<EOmniCaptureImageFormat>> ImageFormatOptions;
     TArray<TEnumOptionPtr<EOmniCapturePNGBitDepth>> PNGBitDepthOptions;
+    TArray<TEnumOptionPtr<EOutputDirectoryMode>> OutputDirectoryModeOptions;
 
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureStereoLayout>>> StereoLayoutCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniOutputFormat>>> OutputFormatCombo;
@@ -262,6 +276,7 @@ private:
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureFisheyeType>>> FisheyeTypeCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCaptureImageFormat>>> ImageFormatCombo;
     TSharedPtr<SComboBox<TEnumOptionPtr<EOmniCapturePNGBitDepth>>> PNGBitDepthCombo;
+    TSharedPtr<SComboBox<TEnumOptionPtr<EOutputDirectoryMode>>> OutputDirectoryModeCombo;
 
     FFeatureAvailabilityState FeatureAvailability;
     double LastFeatureAvailabilityCheckTime = 0.0;

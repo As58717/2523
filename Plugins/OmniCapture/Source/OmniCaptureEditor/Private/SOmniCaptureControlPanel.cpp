@@ -44,6 +44,8 @@
 
 namespace
 {
+    using EOutputDirectoryMode = SOmniCaptureControlPanel::EOutputDirectoryMode;
+
     FText CodecToText(EOmniCaptureCodec Codec)
     {
         switch (Codec)
@@ -134,6 +136,18 @@ namespace
         case EOmniCapturePNGBitDepth::BitDepth32:
         default:
             return LOCTEXT("PNGBitDepth32", "32-bit Color");
+        }
+    }
+
+    FText OutputDirectoryModeToText(EOutputDirectoryMode Mode)
+    {
+        switch (Mode)
+        {
+        case EOutputDirectoryMode::ProjectDefault:
+            return LOCTEXT("OutputDirectoryModeProjectDefault", "Use Default Folder");
+        case EOutputDirectoryMode::Custom:
+        default:
+            return LOCTEXT("OutputDirectoryModeCustom", "Use Custom Folder");
         }
     }
 
@@ -237,6 +251,10 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
     PNGBitDepthOptions.Reset();
     PNGBitDepthOptions.Add(MakeShared<TEnumOptionValue<EOmniCapturePNGBitDepth>>(EOmniCapturePNGBitDepth::BitDepth16));
     PNGBitDepthOptions.Add(MakeShared<TEnumOptionValue<EOmniCapturePNGBitDepth>>(EOmniCapturePNGBitDepth::BitDepth32));
+
+    OutputDirectoryModeOptions.Reset();
+    OutputDirectoryModeOptions.Add(MakeShared<TEnumOptionValue<EOutputDirectoryMode>>(EOutputDirectoryMode::ProjectDefault));
+    OutputDirectoryModeOptions.Add(MakeShared<TEnumOptionValue<EOutputDirectoryMode>>(EOutputDirectoryMode::Custom));
 
     RefreshFeatureAvailability(true);
 
@@ -1269,6 +1287,39 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 + SHorizontalBox::Slot()
                 .AutoWidth()
                 .Padding(0.f, 4.f, 8.f, 0.f)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text(LOCTEXT("OutputDirectoryModeLabel", "Output Location"))
+                ]
+                + SHorizontalBox::Slot()
+                .FillWidth(1.f)
+                [
+                    SAssignNew(OutputDirectoryModeCombo, SComboBox<TEnumOptionPtr<EOutputDirectoryMode>>)
+                    .OptionsSource(&OutputDirectoryModeOptions)
+                    .OnGenerateWidget(this, &SOmniCaptureControlPanel::GenerateOutputDirectoryModeOption)
+                    .OnSelectionChanged(this, &SOmniCaptureControlPanel::HandleOutputDirectoryModeChanged)
+                    .InitiallySelectedItem(FindOutputDirectoryModeOption(GetCurrentOutputDirectoryMode()))
+                    [
+                        SNew(STextBlock)
+                        .Text_Lambda([this]()
+                        {
+                            return OutputDirectoryModeToText(GetCurrentOutputDirectoryMode());
+                        })
+                        .ToolTipText_Lambda([this]()
+                        {
+                            return GetOutputDirectoryModeTooltip(GetCurrentOutputDirectoryMode());
+                        })
+                    ]
+                ]
+            ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(0.f, 4.f, 8.f, 0.f)
                 [
                     SNew(SButton)
                     .Text(LOCTEXT("BrowseOutputDirectory", "Set Output Folder"))
@@ -1485,23 +1536,30 @@ FReply SOmniCaptureControlPanel::OnOpenLastOutput()
 
 FReply SOmniCaptureControlPanel::OnBrowseOutputDirectory()
 {
+    TrySelectCustomOutputDirectory();
+    return FReply::Handled();
+}
+
+bool SOmniCaptureControlPanel::TrySelectCustomOutputDirectory()
+{
     if (!SettingsObject.IsValid())
     {
-        return FReply::Handled();
+        return false;
     }
 
     UOmniCaptureEditorSettings* Settings = SettingsObject.Get();
     IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
     if (!DesktopPlatform)
     {
-        return FReply::Handled();
+        return false;
     }
 
     FString DefaultPath = Settings->CaptureSettings.OutputDirectory;
     if (DefaultPath.IsEmpty())
     {
-        DefaultPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("OmniCaptures"));
+        DefaultPath = FPaths::ProjectSavedDir() / TEXT("OmniCaptures");
     }
+    DefaultPath = FPaths::ConvertRelativePathToFull(DefaultPath);
 
     const void* ParentWindowHandle = nullptr;
     if (FSlateApplication::IsInitialized())
@@ -1517,22 +1575,25 @@ FReply SOmniCaptureControlPanel::OnBrowseOutputDirectory()
         ChosenDirectory
     );
 
-    if (bOpened)
+    if (!bOpened)
     {
-        const FString AbsoluteDirectory = FPaths::ConvertRelativePathToFull(ChosenDirectory);
-        Settings->Modify();
-        Settings->CaptureSettings.OutputDirectory = AbsoluteDirectory;
-        Settings->SaveConfig();
-
-        if (SettingsView.IsValid())
-        {
-            SettingsView->ForceRefresh();
-        }
-
-        UpdateOutputDirectoryDisplay();
+        return false;
     }
 
-    return FReply::Handled();
+    const FString AbsoluteDirectory = FPaths::ConvertRelativePathToFull(ChosenDirectory);
+    if (Settings && Settings->CaptureSettings.OutputDirectory.Equals(AbsoluteDirectory, ESearchCase::CaseSensitive))
+    {
+        UpdateOutputDirectoryDisplay();
+        return true;
+    }
+
+    ModifyCaptureSettings([AbsoluteDirectory](FOmniCaptureSettings& CaptureSettings)
+    {
+        CaptureSettings.OutputDirectory = AbsoluteDirectory;
+    });
+
+    UpdateOutputDirectoryDisplay();
+    return true;
 }
 
 bool SOmniCaptureControlPanel::CanStartCapture() const
@@ -2338,28 +2399,77 @@ EVisibility SOmniCaptureControlPanel::GetFFmpegWarningVisibility() const
     return FeatureAvailability.FFmpeg.bAvailable ? EVisibility::Collapsed : EVisibility::Visible;
 }
 
-void SOmniCaptureControlPanel::UpdateOutputDirectoryDisplay()
+SOmniCaptureControlPanel::EOutputDirectoryMode SOmniCaptureControlPanel::GetCurrentOutputDirectoryMode() const
 {
-    if (!OutputDirectoryTextBlock.IsValid())
+    if (!SettingsObject.IsValid())
     {
-        return;
+        return EOutputDirectoryMode::ProjectDefault;
     }
 
-    FString DisplayPath = TEXT("-");
+    return SettingsObject->CaptureSettings.OutputDirectory.IsEmpty()
+        ? EOutputDirectoryMode::ProjectDefault
+        : EOutputDirectoryMode::Custom;
+}
+
+void SOmniCaptureControlPanel::ApplyOutputDirectoryMode(EOutputDirectoryMode Mode)
+{
+    if (Mode == EOutputDirectoryMode::ProjectDefault)
+    {
+        if (SettingsObject.IsValid() && !SettingsObject->CaptureSettings.OutputDirectory.IsEmpty())
+        {
+            ModifyCaptureSettings([](FOmniCaptureSettings& Settings)
+            {
+                Settings.OutputDirectory.Reset();
+            });
+        }
+    }
+
+    UpdateOutputDirectoryDisplay();
+}
+
+FText SOmniCaptureControlPanel::GetOutputDirectoryModeTooltip(EOutputDirectoryMode Mode) const
+{
+    switch (Mode)
+    {
+    case EOutputDirectoryMode::ProjectDefault:
+        return LOCTEXT("OutputDirectoryModeProjectDefaultTooltip", "Save captures in the project's Saved/OmniCaptures folder.");
+    case EOutputDirectoryMode::Custom:
+    default:
+        return LOCTEXT("OutputDirectoryModeCustomTooltip", "Save captures in a folder that you choose.");
+    }
+}
+
+void SOmniCaptureControlPanel::UpdateOutputDirectoryDisplay()
+{
+    FString DisplayPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("OmniCaptures"));
+    EOutputDirectoryMode Mode = EOutputDirectoryMode::ProjectDefault;
+
     if (SettingsObject.IsValid())
     {
         const FString& ConfiguredPath = SettingsObject->CaptureSettings.OutputDirectory;
-        if (ConfiguredPath.IsEmpty())
+        if (!ConfiguredPath.IsEmpty())
         {
-            DisplayPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("OmniCaptures"));
+            DisplayPath = FPaths::ConvertRelativePathToFull(ConfiguredPath);
+            Mode = EOutputDirectoryMode::Custom;
         }
         else
         {
-            DisplayPath = FPaths::ConvertRelativePathToFull(ConfiguredPath);
+            Mode = EOutputDirectoryMode::ProjectDefault;
         }
     }
 
-    OutputDirectoryTextBlock->SetText(FText::Format(LOCTEXT("OutputDirectoryFormat", "Output Folder: {0}"), FText::FromString(DisplayPath)));
+    if (OutputDirectoryTextBlock.IsValid())
+    {
+        const FText ModeSuffix = (Mode == EOutputDirectoryMode::ProjectDefault)
+            ? LOCTEXT("OutputDirectoryDefaultSuffix", " (Project Default)")
+            : FText::GetEmpty();
+        OutputDirectoryTextBlock->SetText(FText::Format(LOCTEXT("OutputDirectoryFormat", "Output Folder: {0}{1}"), FText::FromString(DisplayPath), ModeSuffix));
+    }
+
+    if (OutputDirectoryModeCombo.IsValid())
+    {
+        OutputDirectoryModeCombo->SetSelectedItem(FindOutputDirectoryModeOption(Mode));
+    }
 }
 
 void SOmniCaptureControlPanel::RefreshConfigurationSummary()
@@ -3035,6 +3145,18 @@ TEnumOptionPtr<EOmniCapturePNGBitDepth> SOmniCaptureControlPanel::FindPNGBitDept
     return PNGBitDepthOptions.Num() > 0 ? PNGBitDepthOptions[0] : nullptr;
 }
 
+TEnumOptionPtr<EOutputDirectoryMode> SOmniCaptureControlPanel::FindOutputDirectoryModeOption(EOutputDirectoryMode Mode) const
+{
+    for (const TEnumOptionPtr<EOutputDirectoryMode>& Option : OutputDirectoryModeOptions)
+    {
+        if (Option.IsValid() && static_cast<EOutputDirectoryMode>(Option->GetValue()) == Mode)
+        {
+            return Option;
+        }
+    }
+    return OutputDirectoryModeOptions.Num() > 0 ? OutputDirectoryModeOptions[0] : nullptr;
+}
+
 void SOmniCaptureControlPanel::HandleOutputFormatChanged(TEnumOptionPtr<EOmniOutputFormat> NewFormat, ESelectInfo::Type SelectInfo)
 {
     if (NewFormat.IsValid())
@@ -3104,6 +3226,42 @@ TSharedRef<SWidget> SOmniCaptureControlPanel::GeneratePNGBitDepthOption(TEnumOpt
         ? static_cast<EOmniCapturePNGBitDepth>(InValue->GetValue())
         : EOmniCapturePNGBitDepth::BitDepth32;
     return SNew(STextBlock).Text(PNGBitDepthToText(BitDepth));
+}
+
+void SOmniCaptureControlPanel::HandleOutputDirectoryModeChanged(TEnumOptionPtr<EOutputDirectoryMode> NewValue, ESelectInfo::Type SelectInfo)
+{
+    if (!NewValue.IsValid() || SelectInfo == ESelectInfo::OnNavigation)
+    {
+        return;
+    }
+
+    const EOutputDirectoryMode Mode = static_cast<EOutputDirectoryMode>(NewValue->GetValue());
+    if (Mode == EOutputDirectoryMode::ProjectDefault)
+    {
+        ApplyOutputDirectoryMode(Mode);
+        return;
+    }
+
+    if (SettingsObject.IsValid() && !SettingsObject->CaptureSettings.OutputDirectory.IsEmpty())
+    {
+        UpdateOutputDirectoryDisplay();
+        return;
+    }
+
+    if (!TrySelectCustomOutputDirectory())
+    {
+        ApplyOutputDirectoryMode(EOutputDirectoryMode::ProjectDefault);
+    }
+}
+
+TSharedRef<SWidget> SOmniCaptureControlPanel::GenerateOutputDirectoryModeOption(TEnumOptionPtr<EOutputDirectoryMode> InValue) const
+{
+    const EOutputDirectoryMode Mode = InValue.IsValid()
+        ? static_cast<EOutputDirectoryMode>(InValue->GetValue())
+        : EOutputDirectoryMode::ProjectDefault;
+    return SNew(STextBlock)
+        .Text(OutputDirectoryModeToText(Mode))
+        .ToolTipText(GetOutputDirectoryModeTooltip(Mode));
 }
 
 int32 SOmniCaptureControlPanel::GetTargetBitrate() const
