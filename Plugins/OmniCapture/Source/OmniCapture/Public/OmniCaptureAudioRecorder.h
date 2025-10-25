@@ -50,6 +50,8 @@ private:
     double AudioStartTime = 0.0;
     int32 CachedSampleRate = 48000;
     TAtomic<int32> PendingPacketCount = 0;
+    TAtomic<int32> DroppedPacketCount = 0;
     TAtomic<bool> bPaused = false;
+    TAtomic<bool> bLoggedOverflowWarning = false;
 };
 
