@@ -1885,7 +1885,16 @@ void SOmniCaptureControlPanel::RefreshDiagnosticLog()
         DiagnosticListView->RequestListRefresh();
         if (NewDiagnosticCount > LastDiagnosticCount && NewDiagnosticCount > 0)
         {
-            DiagnosticListView->ScrollToEnd();
+            const TSharedPtr<FDiagnosticListItem>* LastDiagnosticItem = DiagnosticItems.FindLastByPredicate(
+                [](const TSharedPtr<FDiagnosticListItem>& Item)
+                {
+                    return Item.IsValid() && !Item->bIsPlaceholder;
+                });
+
+            if (LastDiagnosticItem != nullptr)
+            {
+                DiagnosticListView->RequestScrollIntoView(*LastDiagnosticItem);
+            }
         }
     }
 
