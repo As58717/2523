@@ -34,7 +34,7 @@ namespace
         FString Normalized = Trimmed;
         FPaths::NormalizeFilename(Normalized);
 
-        const IFileManager& FileManager = IFileManager::Get();
+        IFileManager& FileManager = IFileManager::Get();
 
         auto AppendExecutable = [](const FString& Directory)
         {
