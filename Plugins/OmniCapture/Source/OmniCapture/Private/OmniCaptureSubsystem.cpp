@@ -73,7 +73,7 @@ void UOmniCaptureSubsystem::AppendDiagnostic(EOmniCaptureDiagnosticLevel Level, 
     if (DiagnosticLog.Num() > GMaxOmniDiagnostics)
     {
         const int32 Excess = DiagnosticLog.Num() - GMaxOmniDiagnostics;
-        DiagnosticLog.RemoveAt(0, Excess, false);
+        DiagnosticLog.RemoveAt(0, Excess, EAllowShrinking::No);
     }
 
     if (Level == EOmniCaptureDiagnosticLevel::Error)
@@ -89,7 +89,26 @@ void UOmniCaptureSubsystem::AppendDiagnosticFromVerbosity(ELogVerbosity::Type Ve
 
 void UOmniCaptureSubsystem::LogDiagnosticMessage(ELogVerbosity::Type Verbosity, const FString& StepName, const FString& Message)
 {
-    UE_LOG(LogOmniCaptureSubsystem, Verbosity, TEXT("%s"), *Message);
+    switch (Verbosity)
+    {
+    case ELogVerbosity::Fatal:
+    case ELogVerbosity::Error:
+        UE_LOG(LogOmniCaptureSubsystem, Error, TEXT("%s"), *Message);
+        break;
+    case ELogVerbosity::Warning:
+        UE_LOG(LogOmniCaptureSubsystem, Warning, TEXT("%s"), *Message);
+        break;
+    case ELogVerbosity::Display:
+    case ELogVerbosity::Log:
+    case ELogVerbosity::Verbose:
+    case ELogVerbosity::VeryVerbose:
+    case ELogVerbosity::All:
+    case ELogVerbosity::SetColor:
+    case ELogVerbosity::BreakOnLog:
+    default:
+        UE_LOG(LogOmniCaptureSubsystem, Log, TEXT("%s"), *Message);
+        break;
+    }
     AppendDiagnosticFromVerbosity(Verbosity, Message, StepName);
 }
 
