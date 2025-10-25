@@ -17,6 +17,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogOmniCaptureAudio, Log, All);
 
 namespace
 {
+    constexpr int32 GMaxPendingAudioPackets = 256;
+
 #if WITH_AUDIOMIXER
     class FOmniCaptureSubmixListener final : public Audio::ISubmixBufferListener
     {
@@ -54,6 +56,8 @@ bool FOmniCaptureAudioRecorder::Initialize(UWorld* InWorld, const FOmniCaptureSe
         }
     }
     PendingPacketCount = 0;
+    DroppedPacketCount = 0;
+    bLoggedOverflowWarning = false;
     AudioClockOrigin = -1.0;
     AudioStartTime = 0.0;
     bPaused.Store(false);
@@ -81,6 +85,9 @@ void FOmniCaptureAudioRecorder::Start()
     {
         return;
     }
+
+    DroppedPacketCount = 0;
+    bLoggedOverflowWarning = false;
 
     RegisterListener();
     AudioStartTime = FPlatformTime::Seconds();
@@ -122,6 +129,8 @@ void FOmniCaptureAudioRecorder::Stop(const FString& OutputDirectory, const FStri
 
     AudioClockOrigin = -1.0;
     AudioStartTime = 0.0;
+    DroppedPacketCount = 0;
+    bLoggedOverflowWarning = false;
     bPaused.Store(false);
 }
 
@@ -152,8 +161,9 @@ void FOmniCaptureAudioRecorder::GatherAudio(double FrameTimestamp, TArray<FOmniA
 FString FOmniCaptureAudioRecorder::GetDebugStatus() const
 {
     const int32 Pending = PendingPacketCount.Load();
+    const int32 Dropped = DroppedPacketCount.Load();
     const FString SubmixName = TargetSubmix.IsValid() ? TargetSubmix->GetName() : TEXT("Master");
-    return FString::Printf(TEXT("AudioPackets:%d SR:%d Submix:%s"), Pending, CachedSampleRate, *SubmixName);
+    return FString::Printf(TEXT("AudioPackets:%d Dropped:%d SR:%d Submix:%s"), Pending, Dropped, CachedSampleRate, *SubmixName);
 }
 
 int32 FOmniCaptureAudioRecorder::GetPendingPacketCount() const
@@ -236,8 +246,28 @@ void FOmniCaptureAudioRecorder::HandleSubmixBuffer(const float* AudioData, int32
 
     {
         FScopeLock Lock(&PacketCS);
+        bool bDropped = false;
+        while (PendingPacketCount.Load() >= GMaxPendingAudioPackets)
+        {
+            FOmniAudioPacket DiscardedPacket;
+            if (!PendingPackets.Dequeue(DiscardedPacket))
+            {
+                PendingPacketCount = 0;
+                break;
+            }
+
+            PendingPacketCount.DecrementExchange();
+            DroppedPacketCount.IncrementExchange();
+            bDropped = true;
+        }
+
         PendingPackets.Enqueue(MoveTemp(Packet));
         PendingPacketCount.IncrementExchange();
+
+        if (bDropped && !bLoggedOverflowWarning.Exchange(true))
+        {
+            UE_LOG(LogOmniCaptureAudio, Warning, TEXT("OmniCapture audio queue overflowed. Dropping oldest packets to keep audio in sync."));
+        }
     }
 #else
     (void)AudioData;
