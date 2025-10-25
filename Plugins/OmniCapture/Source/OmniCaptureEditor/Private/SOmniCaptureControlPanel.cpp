@@ -2022,6 +2022,11 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
         return;
     }
 
+    if (!bForceRefresh && IsAnyComboBoxOpen())
+    {
+        return;
+    }
+
     LastFeatureAvailabilityCheckTime = Now;
 
     FFeatureAvailabilityState NewState;
@@ -2169,6 +2174,23 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
             ColorFormatCombo->RefreshOptions();
         }
     }
+}
+
+bool SOmniCaptureControlPanel::IsAnyComboBoxOpen() const
+{
+    const auto IsComboOpen = [](const auto& ComboPtr) -> bool
+    {
+        return ComboPtr.IsValid() && ComboPtr->IsOpen();
+    };
+
+    return IsComboOpen(OutputFormatCombo)
+        || IsComboOpen(CodecCombo)
+        || IsComboOpen(ColorFormatCombo)
+        || IsComboOpen(ProjectionCombo)
+        || IsComboOpen(FisheyeTypeCombo)
+        || IsComboOpen(StereoLayoutCombo)
+        || IsComboOpen(ImageFormatCombo)
+        || IsComboOpen(PNGBitDepthCombo);
 }
 
 bool SOmniCaptureControlPanel::IsOutputFormatSelectable(EOmniOutputFormat Format) const
