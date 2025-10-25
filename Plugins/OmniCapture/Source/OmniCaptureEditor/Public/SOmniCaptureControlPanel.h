@@ -205,6 +205,7 @@ private:
     bool CanClearDiagnostics() const;
 
     void RefreshFeatureAvailability(bool bForceRefresh = false);
+    bool IsAnyComboBoxOpen() const;
     bool IsOutputFormatSelectable(EOmniOutputFormat Format) const;
     FText GetOutputFormatTooltip(EOmniOutputFormat Format) const;
     FText GetNVENCWarningText() const;
