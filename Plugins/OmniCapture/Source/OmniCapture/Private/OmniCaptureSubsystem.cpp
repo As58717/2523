@@ -186,9 +186,13 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     SetDiagnosticContext(TEXT("ValidateEnvironment"));
     AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Validating capture environment."), TEXT("ValidateEnvironment"));
     const bool bEnvironmentOk = ValidateEnvironment();
-    if (!ApplyFallbacks())
+    FString FallbackFailureReason;
+    if (!ApplyFallbacks(&FallbackFailureReason))
     {
-        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("ValidateEnvironment"), TEXT("Capture aborted due to environment validation failure."));
+        const FString FailureMessage = FallbackFailureReason.IsEmpty()
+            ? TEXT("Capture aborted due to environment validation failure.")
+            : FString::Printf(TEXT("Capture aborted due to environment validation failure: %s"), *FallbackFailureReason);
+        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("ValidateEnvironment"), FailureMessage);
         return;
     }
     AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Environment validation completed."), TEXT("ValidateEnvironment"));
@@ -1065,8 +1069,13 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
     return bResult;
 }
 
-bool UOmniCaptureSubsystem::ApplyFallbacks()
+bool UOmniCaptureSubsystem::ApplyFallbacks(FString* OutFailureReason)
 {
+    if (OutFailureReason)
+    {
+        OutFailureReason->Reset();
+    }
+
     if (ActiveSettings.OutputFormat == EOmniOutputFormat::NVENCHardware)
     {
 #if !PLATFORM_WINDOWS
@@ -1088,6 +1097,10 @@ bool UOmniCaptureSubsystem::ApplyFallbacks()
             }
 
             AddWarningUnique(FString::Printf(TEXT("NVENC required but unavailable: %s"), *Reason));
+            if (OutFailureReason)
+            {
+                *OutFailureReason = Reason;
+            }
             return false;
         }
 

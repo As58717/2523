@@ -118,7 +118,7 @@ private:
     void FinalizeOutputs(bool bFinalizeOutputs);
 
     bool ValidateEnvironment();
-    bool ApplyFallbacks();
+    bool ApplyFallbacks(FString* OutFailureReason = nullptr);
 
     void InitializeAudioRecording();
     void ShutdownAudioRecording();
