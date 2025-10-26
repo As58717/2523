@@ -97,7 +97,7 @@ private:
 
     UOmniCaptureSubsystem* GetSubsystem() const;
     EActiveTimerReturnType HandleActiveTimer(double InCurrentTime, float InDeltaTime);
-    void RefreshStatus();
+    void RefreshStatus(bool bUpdateSummary = true);
     void UpdateOutputDirectoryDisplay();
     void RefreshConfigurationSummary();
     void UpdatePreviewTextureDisplay();
@@ -205,6 +205,7 @@ private:
     bool CanClearDiagnostics() const;
 
     void RefreshFeatureAvailability(bool bForceRefresh = false);
+    bool IsAnyComboBoxOpen() const;
     bool IsOutputFormatSelectable(EOmniOutputFormat Format) const;
     FText GetOutputFormatTooltip(EOmniOutputFormat Format) const;
     FText GetNVENCWarningText() const;
