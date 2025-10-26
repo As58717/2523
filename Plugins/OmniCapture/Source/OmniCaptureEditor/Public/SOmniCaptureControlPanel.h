@@ -45,6 +45,12 @@ public:
 
     void Construct(const FArguments& InArgs);
 
+    enum class EOutputDirectoryMode : uint8
+    {
+        ProjectDefault,
+        Custom
+    };
+
 private:
     struct FFeatureToggleState
     {
@@ -78,12 +84,6 @@ private:
         SpatialJson,
         XMP,
         FFmpeg
-    };
-
-    enum class EOutputDirectoryMode : uint8
-    {
-        ProjectDefault,
-        Custom
     };
 
     FReply OnStartCapture();
