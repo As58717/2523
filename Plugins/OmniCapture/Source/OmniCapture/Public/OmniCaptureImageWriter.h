@@ -31,6 +31,7 @@ private:
     bool WriteEXRFromColor(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     void TrackPendingTask(TFuture<bool>&& TaskFuture);
     void PruneCompletedTasks();
+    void EnforcePendingTaskLimit();
     void WaitForAllTasks();
 
     bool bInitialized = false;
@@ -38,6 +39,7 @@ private:
     FString SequenceBaseName;
     EOmniCaptureImageFormat TargetFormat = EOmniCaptureImageFormat::PNG;
     EOmniCapturePNGBitDepth TargetPNGBitDepth = EOmniCapturePNGBitDepth::BitDepth32;
+    int32 MaxPendingTasks = 8;
 
     TArray<FOmniCaptureFrameMetadata> CapturedMetadata;
     FCriticalSection MetadataCS;

@@ -127,6 +127,7 @@ void FOmniCaptureImageWriter::Initialize(const FOmniCaptureSettings& Settings, c
     IFileManager::Get().MakeDirectory(*OutputDirectory, true);
     TargetFormat = Settings.ImageFormat;
     TargetPNGBitDepth = Settings.PNGBitDepth;
+    MaxPendingTasks = FMath::Max(1, Settings.MaxPendingImageTasks);
     bInitialized = true;
 }
 
@@ -154,6 +155,7 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
 
     TrackPendingTask(MoveTemp(Future));
     PruneCompletedTasks();
+    EnforcePendingTaskLimit();
 
     {
         FScopeLock Lock(&MetadataCS);
@@ -697,6 +699,38 @@ void FOmniCaptureImageWriter::PruneCompletedTasks()
                 UE_LOG(LogTemp, Warning, TEXT("OmniCapture image write task failed"));
             }
             PendingTasks.RemoveAtSwap(Index, 1, EAllowShrinking::No);
+        }
+    }
+}
+
+void FOmniCaptureImageWriter::EnforcePendingTaskLimit()
+{
+    if (MaxPendingTasks <= 0)
+    {
+        return;
+    }
+
+    while (true)
+    {
+        TFuture<bool> TaskToWait;
+        {
+            FScopeLock Lock(&PendingTasksCS);
+            if (PendingTasks.Num() <= MaxPendingTasks)
+            {
+                break;
+            }
+
+            TaskToWait = MoveTemp(PendingTasks[0]);
+            PendingTasks.RemoveAt(0, 1, EAllowShrinking::No);
+        }
+
+        if (TaskToWait.IsValid())
+        {
+            const bool bResult = TaskToWait.Get();
+            if (!bResult)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("OmniCapture image write task failed"));
+            }
         }
     }
 }
