@@ -23,6 +23,34 @@ namespace
         return ImageWrapperModule.CreateImageWrapper(Format);
     }
 
+    bool WritePNGWithImageWrapper(const FString& FilePath, const FIntPoint& Size, const void* RawData, int64 RawSizeInBytes, ERGBFormat Format, int32 BitDepth)
+    {
+        if (!RawData || RawSizeInBytes <= 0 || Size.X <= 0 || Size.Y <= 0)
+        {
+            return false;
+        }
+
+        const TSharedPtr<IImageWrapper> ImageWrapper = CreateImageWrapper(EImageFormat::PNG);
+        if (!ImageWrapper.IsValid())
+        {
+            return false;
+        }
+
+        if (!ImageWrapper->SetRaw(static_cast<const uint8*>(RawData), RawSizeInBytes, Size.X, Size.Y, Format, BitDepth))
+        {
+            return false;
+        }
+
+        const TArray64<uint8> CompressedData = ImageWrapper->GetCompressed(0);
+        if (CompressedData.Num() == 0)
+        {
+            return false;
+        }
+
+        IFileManager::Get().Delete(*FilePath, false, true, false);
+        return FFileHelper::SaveArrayToFile(CompressedData, *FilePath);
+    }
+
     FString NormalizeFilePath(const FString& InPath)
     {
         FString Normalized = InPath;
@@ -252,7 +280,17 @@ bool FOmniCaptureImageWriter::WritePNGRaw(const FString& FilePath, const FIntPoi
         }
     };
 
-    return WritePNGWithRowSource(FilePath, Size, Format, BitDepth, PrepareRows);
+    if (WritePNGWithRowSource(FilePath, Size, Format, BitDepth, PrepareRows))
+    {
+        return true;
+    }
+
+    if (BitDepth == 8)
+    {
+        return WritePNGWithImageWrapper(FilePath, Size, RawData, RawSizeInBytes, Format, BitDepth);
+    }
+
+    return false;
 }
 
 bool FOmniCaptureImageWriter::WritePNGWithRowSource(const FString& FilePath, const FIntPoint& Size, ERGBFormat Format, int32 BitDepth, TFunctionRef<void(int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)> PrepareRows) const
@@ -466,35 +504,43 @@ bool FOmniCaptureImageWriter::WritePNGFromLinear(const TImagePixelData<FFloat16C
         return WritePNGWithRowSource(FilePath, Size, ERGBFormat::BGRA, 16, PrepareRows);
     }
 
-    auto PrepareRows = [&PixelData, &Size](int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
-    {
-        const int64 RequiredSize = BytesPerRow * RowCount;
-        TempBuffer.SetNum(RequiredSize, EAllowShrinking::No);
+    const int64 PixelCount = static_cast<int64>(Size.X) * Size.Y;
+    const int64 BytesPerRow = static_cast<int64>(Size.X) * 4;
+    TArray64<uint8> ConvertedPixels;
+    ConvertedPixels.SetNum(PixelCount * 4, EAllowShrinking::No);
 
+    for (int64 PixelIndex = 0; PixelIndex < PixelCount; ++PixelIndex)
+    {
+        const FFloat16Color& Pixel = PixelData.Pixels[PixelIndex];
+        const FLinearColor Linear(
+            Pixel.R.GetFloat(),
+            Pixel.G.GetFloat(),
+            Pixel.B.GetFloat(),
+            Pixel.A.GetFloat());
+        const FColor Converted = Linear.ToFColor(true);
+        const int64 Offset = PixelIndex * 4;
+        ConvertedPixels[Offset + 0] = Converted.B;
+        ConvertedPixels[Offset + 1] = Converted.G;
+        ConvertedPixels[Offset + 2] = Converted.R;
+        ConvertedPixels[Offset + 3] = Converted.A;
+    }
+
+    uint8* ConvertedBasePtr = ConvertedPixels.GetData();
+    auto PrepareRows = [ConvertedBasePtr, BytesPerRow](int32 RowStart, int32 RowCount, int64, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
+    {
+        (void)TempBuffer;
         for (int32 Row = 0; Row < RowCount; ++Row)
         {
-            uint8* RowData = TempBuffer.GetData() + BytesPerRow * Row;
-            RowPointers[Row] = RowData;
-            const int64 PixelRowStart = static_cast<int64>(RowStart + Row) * Size.X;
-            for (int32 Column = 0; Column < Size.X; ++Column)
-            {
-                const FFloat16Color& Pixel = PixelData.Pixels[PixelRowStart + Column];
-                const FLinearColor Linear(
-                    Pixel.R.GetFloat(),
-                    Pixel.G.GetFloat(),
-                    Pixel.B.GetFloat(),
-                    Pixel.A.GetFloat());
-                const FColor Converted = Linear.ToFColor(true);
-                const int64 Offset = static_cast<int64>(Column) * 4;
-                RowData[Offset + 0] = Converted.B;
-                RowData[Offset + 1] = Converted.G;
-                RowData[Offset + 2] = Converted.R;
-                RowData[Offset + 3] = Converted.A;
-            }
+            RowPointers[Row] = ConvertedBasePtr + BytesPerRow * (RowStart + Row);
         }
     };
 
-    return WritePNGWithRowSource(FilePath, Size, ERGBFormat::BGRA, 8, PrepareRows);
+    if (WritePNGWithRowSource(FilePath, Size, ERGBFormat::BGRA, 8, PrepareRows))
+    {
+        return true;
+    }
+
+    return WritePNGWithImageWrapper(FilePath, Size, ConvertedPixels.GetData(), ConvertedPixels.Num(), ERGBFormat::BGRA, 8);
 }
 
 bool FOmniCaptureImageWriter::WriteBMPFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const
