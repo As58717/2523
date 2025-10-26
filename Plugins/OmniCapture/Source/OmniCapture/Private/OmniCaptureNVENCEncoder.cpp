@@ -13,6 +13,7 @@
 #include "PixelFormat.h"
 #include "RHI.h"
 #include "UObject/UnrealType.h"
+#include "Logging/LogMacros.h"
 #if __has_include("RHIAdapter.h")
 #include "RHIAdapter.h"
 #define OMNI_HAS_RHI_ADAPTER 1
@@ -21,6 +22,8 @@
 #endif
 #include "GenericPlatform/GenericPlatformDriver.h"
 #include "Interfaces/IPluginManager.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogOmniCaptureNVENC, Log, All);
 
 #if OMNI_WITH_AVENCODER
 #include "RHIResources.h"
@@ -873,7 +876,14 @@ void FOmniCaptureNVENCEncoder::SetModuleOverridePath(const FString& InOverridePa
         GetProbeValidFlag() = false;
     }
 #else
-    (void)InOverridePath;
+    if (!InOverridePath.IsEmpty())
+    {
+        UE_LOG(LogOmniCaptureNVENC, Warning, TEXT("Ignoring AVEncoder module override '%s' because NVENC support was compiled out."), *InOverridePath);
+    }
+    else
+    {
+        UE_LOG(LogOmniCaptureNVENC, Verbose, TEXT("AVEncoder module override reset ignored because NVENC support was compiled out."));
+    }
 #endif
 }
 
@@ -908,7 +918,14 @@ void FOmniCaptureNVENCEncoder::SetDllOverridePath(const FString& InOverridePath)
         GetProbeValidFlag() = false;
     }
 #else
-    (void)InOverridePath;
+    if (!InOverridePath.IsEmpty())
+    {
+        UE_LOG(LogOmniCaptureNVENC, Warning, TEXT("Ignoring NVENC DLL override '%s' because NVENC support was compiled out."), *InOverridePath);
+    }
+    else
+    {
+        UE_LOG(LogOmniCaptureNVENC, Verbose, TEXT("NVENC DLL override reset ignored because NVENC support was compiled out."));
+    }
 #endif
 }
 
@@ -929,6 +946,10 @@ void FOmniCaptureNVENCEncoder::InvalidateCachedCapabilities()
         GetAutoDetectDllAttempted() = false;
         GetAutoDetectedDllPath().Reset();
     }
+#endif
+
+#if !OMNI_WITH_AVENCODER
+    UE_LOG(LogOmniCaptureNVENC, Verbose, TEXT("Ignoring NVENC capability invalidation request because NVENC support was compiled out."));
 #endif
 }
 
