@@ -683,7 +683,6 @@ void UOmniCaptureSubsystem::CreateRig()
     }
 
     FActorSpawnParameters SpawnParams;
-    SpawnParams.Name = OmniCapture::RigActorName;
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
     if (AOmniCaptureRigActor* NewRig = World->SpawnActor<AOmniCaptureRigActor>(SpawnParams))
@@ -713,7 +712,6 @@ void UOmniCaptureSubsystem::CreateTickActor()
     }
 
     FActorSpawnParameters SpawnParams;
-    SpawnParams.Name = OmniCapture::DirectorActorName;
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
     if (AOmniCaptureDirectorActor* Director = World->SpawnActor<AOmniCaptureDirectorActor>(SpawnParams))
