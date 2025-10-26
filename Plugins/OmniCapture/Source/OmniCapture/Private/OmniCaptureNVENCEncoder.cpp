@@ -21,8 +21,6 @@
 #include "GenericPlatform/GenericPlatformDriver.h"
 
 #if OMNI_WITH_AVENCODER
-#include "AVEncoder/VideoEncoderFactory.h"
-#include "AVEncoder/VideoEncoderCommon.h"
 #include "RHIResources.h"
 #include "RHICommandList.h"
 #endif
@@ -36,17 +34,17 @@ namespace
 #endif
 
 #if OMNI_WITH_AVENCODER
-    AVEncoder::EVideoFormat ToVideoFormat(EOmniCaptureColorFormat Format)
+    OmniAVEncoder::EVideoFormat ToVideoFormat(EOmniCaptureColorFormat Format)
     {
         switch (Format)
         {
         case EOmniCaptureColorFormat::NV12:
-            return AVEncoder::EVideoFormat::NV12;
+            return OmniAVEncoder::EVideoFormat::NV12;
         case EOmniCaptureColorFormat::P010:
-            return AVEncoder::EVideoFormat::P010;
+            return OmniAVEncoder::EVideoFormat::P010;
         case EOmniCaptureColorFormat::BGRA:
         default:
-            return AVEncoder::EVideoFormat::BGRA8;
+            return OmniAVEncoder::EVideoFormat::BGRA8;
         }
     }
 
@@ -142,12 +140,12 @@ namespace
         }
     }
 
-    bool TryCreateEncoderSession(AVEncoder::ECodec Codec, AVEncoder::EVideoFormat Format, FString& OutFailureReason)
+    bool TryCreateEncoderSession(OmniAVEncoder::ECodec Codec, OmniAVEncoder::EVideoFormat Format, FString& OutFailureReason)
     {
         constexpr int32 TestWidth = 256;
         constexpr int32 TestHeight = 144;
 
-        AVEncoder::FVideoEncoderInput::FCreateParameters CreateParameters;
+        OmniAVEncoder::FVideoEncoderInput::FCreateParameters CreateParameters;
         CreateParameters.Width = TestWidth;
         CreateParameters.Height = TestHeight;
         CreateParameters.MaxBufferDimensions = FIntPoint(TestWidth, TestHeight);
@@ -155,35 +153,35 @@ namespace
         CreateParameters.DebugName = TEXT("OmniNVENCProbe");
         CreateParameters.bAutoCopy = true;
 
-        TSharedPtr<AVEncoder::FVideoEncoderInput> EncoderInput = AVEncoder::FVideoEncoderInput::CreateForRHI(CreateParameters);
+        TSharedPtr<OmniAVEncoder::FVideoEncoderInput> EncoderInput = OmniAVEncoder::FVideoEncoderInput::CreateForRHI(CreateParameters);
         if (!EncoderInput.IsValid())
         {
             OutFailureReason = TEXT("Failed to create AVEncoder input for probe");
             return false;
         }
 
-        AVEncoder::FVideoEncoder::FLayerConfig LayerConfig;
+        OmniAVEncoder::FVideoEncoder::FLayerConfig LayerConfig;
         LayerConfig.Width = TestWidth;
         LayerConfig.Height = TestHeight;
         LayerConfig.MaxFramerate = 60;
         LayerConfig.TargetBitrate = 5 * 1000 * 1000;
         LayerConfig.MaxBitrate = 10 * 1000 * 1000;
 
-        AVEncoder::FVideoEncoder::FCodecConfig CodecConfig;
+        OmniAVEncoder::FVideoEncoder::FCodecConfig CodecConfig;
         CodecConfig.GOPLength = 30;
         CodecConfig.MaxNumBFrames = 0;
         CodecConfig.bEnableFrameReordering = false;
 
-        AVEncoder::FVideoEncoder::FInit EncoderInit;
+        OmniAVEncoder::FVideoEncoder::FInit EncoderInit;
         EncoderInit.Codec = Codec;
         EncoderInit.CodecConfig = CodecConfig;
         EncoderInit.Layers.Add(LayerConfig);
 
-        auto OnEncodedPacket = AVEncoder::FVideoEncoder::FOnEncodedPacket::CreateLambda([](const AVEncoder::FVideoEncoder::FEncodedPacket&)
+        auto OnEncodedPacket = OmniAVEncoder::FVideoEncoder::FOnEncodedPacket::CreateLambda([](const OmniAVEncoder::FVideoEncoder::FEncodedPacket&)
         {
         });
 
-        TSharedPtr<AVEncoder::FVideoEncoder> VideoEncoder = AVEncoder::FVideoEncoderFactory::Create(*EncoderInput, EncoderInit, MoveTemp(OnEncodedPacket));
+        TSharedPtr<OmniAVEncoder::FVideoEncoder> VideoEncoder = OmniAVEncoder::FVideoEncoderFactory::Create(*EncoderInput, EncoderInit, MoveTemp(OnEncodedPacket));
         if (!VideoEncoder.IsValid())
         {
             OutFailureReason = TEXT("Failed to create AVEncoder NVENC instance");
@@ -320,7 +318,7 @@ namespace
         }
 
         FString SessionFailure;
-        if (!TryCreateEncoderSession(AVEncoder::ECodec::H264, AVEncoder::EVideoFormat::BGRA8, SessionFailure))
+        if (!TryCreateEncoderSession(OmniAVEncoder::ECodec::H264, OmniAVEncoder::EVideoFormat::BGRA8, SessionFailure))
         {
             Result.SessionFailureReason = SessionFailure;
             Result.BGRAFailureReason = SessionFailure;
@@ -333,7 +331,7 @@ namespace
         Result.bSupportsBGRA = true;
 
         FString Nv12Failure;
-        if (TryCreateEncoderSession(AVEncoder::ECodec::H264, AVEncoder::EVideoFormat::NV12, Nv12Failure))
+        if (TryCreateEncoderSession(OmniAVEncoder::ECodec::H264, OmniAVEncoder::EVideoFormat::NV12, Nv12Failure))
         {
             Result.bSupportsNV12 = true;
         }
@@ -344,7 +342,7 @@ namespace
 
         bool bHevcSuccess = false;
         FString HevcFailure;
-        if (TryCreateEncoderSession(AVEncoder::ECodec::HEVC, AVEncoder::EVideoFormat::NV12, HevcFailure))
+        if (TryCreateEncoderSession(OmniAVEncoder::ECodec::HEVC, OmniAVEncoder::EVideoFormat::NV12, HevcFailure))
         {
             Result.bSupportsHEVC = true;
             bHevcSuccess = true;
@@ -355,7 +353,7 @@ namespace
         }
 
         FString P010Failure;
-        if (TryCreateEncoderSession(AVEncoder::ECodec::HEVC, AVEncoder::EVideoFormat::P010, P010Failure))
+        if (TryCreateEncoderSession(OmniAVEncoder::ECodec::HEVC, OmniAVEncoder::EVideoFormat::P010, P010Failure))
         {
             Result.bSupportsP010 = true;
             Result.bSupportsHEVC = true;
@@ -694,7 +692,7 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
         }
     }
 
-    AVEncoder::FVideoEncoderInput::FCreateParameters CreateParameters;
+    OmniAVEncoder::FVideoEncoderInput::FCreateParameters CreateParameters;
     CreateParameters.Width = OutputWidth;
     CreateParameters.Height = OutputHeight;
     CreateParameters.Format = ToVideoFormat(ColorFormat);
@@ -702,7 +700,7 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     CreateParameters.DebugName = TEXT("OmniCaptureNVENC");
     CreateParameters.bAutoCopy = !bZeroCopyRequested;
 
-    EncoderInput = AVEncoder::FVideoEncoderInput::CreateForRHI(CreateParameters);
+    EncoderInput = OmniAVEncoder::FVideoEncoderInput::CreateForRHI(CreateParameters);
     if (!EncoderInput.IsValid())
     {
         const FString FormatName = StaticEnum<EOmniCaptureColorFormat>()->GetNameStringByValue(static_cast<int64>(ColorFormat));
@@ -714,7 +712,7 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
         return;
     }
 
-    LayerConfig = AVEncoder::FVideoEncoder::FLayerConfig();
+    LayerConfig = OmniAVEncoder::FVideoEncoder::FLayerConfig();
     LayerConfig.Width = OutputWidth;
     LayerConfig.Height = OutputHeight;
     LayerConfig.MaxFramerate = 120;
@@ -723,18 +721,18 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     LayerConfig.MinQp = 0;
     LayerConfig.MaxQp = 51;
 
-    CodecConfig = AVEncoder::FVideoEncoder::FCodecConfig();
+    CodecConfig = OmniAVEncoder::FVideoEncoder::FCodecConfig();
     CodecConfig.bLowLatency = Settings.Quality.bLowLatency;
     CodecConfig.GOPLength = Settings.Quality.GOPLength;
     CodecConfig.MaxNumBFrames = Settings.Quality.BFrames;
     CodecConfig.bEnableFrameReordering = Settings.Quality.BFrames > 0;
 
-    AVEncoder::FVideoEncoder::FInit EncoderInit;
-    EncoderInit.Codec = bUseHEVC ? AVEncoder::ECodec::HEVC : AVEncoder::ECodec::H264;
+    OmniAVEncoder::FVideoEncoder::FInit EncoderInit;
+    EncoderInit.Codec = bUseHEVC ? OmniAVEncoder::ECodec::HEVC : OmniAVEncoder::ECodec::H264;
     EncoderInit.CodecConfig = CodecConfig;
     EncoderInit.Layers.Add(LayerConfig);
 
-    auto OnEncodedPacket = AVEncoder::FVideoEncoder::FOnEncodedPacket::CreateLambda([this](const AVEncoder::FVideoEncoder::FEncodedPacket& Packet)
+    auto OnEncodedPacket = OmniAVEncoder::FVideoEncoder::FOnEncodedPacket::CreateLambda([this](const OmniAVEncoder::FVideoEncoder::FEncodedPacket& Packet)
     {
         FScopeLock Lock(&EncoderCS);
         if (!BitstreamFile)
@@ -750,7 +748,7 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
         }
     });
 
-    VideoEncoder = AVEncoder::FVideoEncoderFactory::Create(*EncoderInput, EncoderInit, MoveTemp(OnEncodedPacket));
+    VideoEncoder = OmniAVEncoder::FVideoEncoderFactory::Create(*EncoderInput, EncoderInit, MoveTemp(OnEncodedPacket));
     if (!VideoEncoder.IsValid())
     {
         const FString CodecName = StaticEnum<EOmniCaptureCodec>()->GetNameStringByValue(static_cast<int64>(RequestedCodec));
@@ -799,7 +797,7 @@ void FOmniCaptureNVENCEncoder::EnqueueFrame(const FOmniCaptureFrame& Frame)
         return;
     }
 
-    TSharedPtr<AVEncoder::FVideoEncoderInputFrame> InputFrame;
+    TSharedPtr<OmniAVEncoder::FVideoEncoderInputFrame> InputFrame;
     if (Frame.EncoderTextures.Num() > 0)
     {
         InputFrame = EncoderInput->CreateEncoderInputFrame();
