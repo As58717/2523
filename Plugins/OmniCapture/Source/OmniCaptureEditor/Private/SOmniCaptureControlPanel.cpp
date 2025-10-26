@@ -1707,13 +1707,15 @@ UOmniCaptureSubsystem* SOmniCaptureControlPanel::GetSubsystem() const
 EActiveTimerReturnType SOmniCaptureControlPanel::HandleActiveTimer(double InCurrentTime, float InDeltaTime)
 {
     RefreshFeatureAvailability();
-    RefreshStatus();
+
+    const bool bAllowSummaryUpdate = !IsAnyComboBoxOpen();
+    RefreshStatus(bAllowSummaryUpdate);
     UpdatePreviewTextureDisplay();
     RefreshDiagnosticLog();
     return EActiveTimerReturnType::Continue;
 }
 
-void SOmniCaptureControlPanel::RefreshStatus()
+void SOmniCaptureControlPanel::RefreshStatus(bool bUpdateSummary)
 {
     if (!StatusTextBlock.IsValid())
     {
@@ -1820,7 +1822,10 @@ void SOmniCaptureControlPanel::RefreshStatus()
 
     UpdateOutputDirectoryDisplay();
     RebuildWarningList(Subsystem->GetActiveWarnings());
-    RefreshConfigurationSummary();
+    if (bUpdateSummary)
+    {
+        RefreshConfigurationSummary();
+    }
 }
 
 void SOmniCaptureControlPanel::UpdatePreviewTextureDisplay()

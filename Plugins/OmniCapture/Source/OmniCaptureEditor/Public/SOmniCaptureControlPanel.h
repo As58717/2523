@@ -104,7 +104,7 @@ private:
 
     UOmniCaptureSubsystem* GetSubsystem() const;
     EActiveTimerReturnType HandleActiveTimer(double InCurrentTime, float InDeltaTime);
-    void RefreshStatus();
+    void RefreshStatus(bool bUpdateSummary = true);
     void UpdateOutputDirectoryDisplay();
     void RefreshConfigurationSummary();
     void UpdatePreviewTextureDisplay();
