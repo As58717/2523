@@ -82,6 +82,12 @@ namespace
         return Mutex;
     }
 
+    FCriticalSection& GetModuleOverrideMutex()
+    {
+        static FCriticalSection Mutex;
+        return Mutex;
+    }
+
     bool& GetProbeValidFlag()
     {
         static bool bValid = false;
@@ -98,6 +104,40 @@ namespace
     {
         static FString OverridePath;
         return OverridePath;
+    }
+
+    FString& GetModuleOverridePath()
+    {
+        static FString OverridePath;
+        return OverridePath;
+    }
+
+    bool& GetModuleDirectoryRegisteredFlag()
+    {
+        static bool bRegistered = false;
+        return bRegistered;
+    }
+
+    void EnsureModuleOverrideRegistered()
+    {
+        FString OverridePath;
+        bool bNeedsRegistration = false;
+
+        {
+            FScopeLock OverrideLock(&GetModuleOverrideMutex());
+            OverridePath = GetModuleOverridePath();
+            bool& bRegistered = GetModuleDirectoryRegisteredFlag();
+            if (!OverridePath.IsEmpty() && !bRegistered)
+            {
+                bNeedsRegistration = true;
+                bRegistered = true;
+            }
+        }
+
+        if (bNeedsRegistration)
+        {
+            FModuleManager::Get().AddModuleDirectory(*OverridePath);
+        }
     }
 
     bool TryCreateEncoderSession(AVEncoder::ECodec Codec, AVEncoder::EVideoFormat Format, FString& OutFailureReason)
@@ -266,9 +306,15 @@ namespace
             return Result;
         }
 
+        EnsureModuleOverrideRegistered();
+
         if (!FModuleManager::Get().IsModuleLoaded(TEXT("AVEncoder")))
         {
-            FModuleManager::Get().LoadModule(TEXT("AVEncoder"));
+            if (!FModuleManager::Get().LoadModule(TEXT("AVEncoder")))
+            {
+                Result.HardwareFailureReason = TEXT("Failed to load the AVEncoder module. Provide an override path if it resides outside the engine.");
+                return Result;
+            }
         }
 
         FString SessionFailure;
@@ -459,6 +505,56 @@ bool FOmniCaptureNVENCEncoder::SupportsZeroCopyRHI()
 #endif
 }
 
+void FOmniCaptureNVENCEncoder::SetModuleOverridePath(const FString& InOverridePath)
+{
+#if OMNI_WITH_AVENCODER
+    FString NormalizedPath = InOverridePath;
+    NormalizedPath.TrimStartAndEndInline();
+    if (!NormalizedPath.IsEmpty())
+    {
+        NormalizedPath = FPaths::ConvertRelativePathToFull(NormalizedPath);
+        FPaths::MakePlatformFilename(NormalizedPath);
+
+        if (FPaths::FileExists(NormalizedPath))
+        {
+            NormalizedPath = FPaths::GetPath(NormalizedPath);
+            FPaths::MakePlatformFilename(NormalizedPath);
+        }
+    }
+
+    const bool bHasPath = !NormalizedPath.IsEmpty();
+    bool bChanged = false;
+    {
+        FScopeLock OverrideLock(&GetModuleOverrideMutex());
+        FString& StoredPath = GetModuleOverridePath();
+        if (!StoredPath.Equals(NormalizedPath, ESearchCase::CaseSensitive))
+        {
+            StoredPath = NormalizedPath;
+            GetModuleDirectoryRegisteredFlag() = false;
+            bChanged = true;
+        }
+    }
+
+    if (bChanged)
+    {
+        if (bHasPath)
+        {
+            EnsureModuleOverrideRegistered();
+        }
+        else
+        {
+            FScopeLock OverrideLock(&GetModuleOverrideMutex());
+            GetModuleDirectoryRegisteredFlag() = false;
+        }
+
+        FScopeLock CacheLock(&GetProbeCacheMutex());
+        GetProbeValidFlag() = false;
+    }
+#else
+    (void)InOverridePath;
+#endif
+}
+
 void FOmniCaptureNVENCEncoder::SetDllOverridePath(const FString& InOverridePath)
 {
 #if OMNI_WITH_AVENCODER
@@ -522,9 +618,16 @@ void FOmniCaptureNVENCEncoder::Initialize(const FOmniCaptureSettings& Settings, 
     const int32 OutputWidth = OutputSize.X;
     const int32 OutputHeight = OutputSize.Y;
 
+    EnsureModuleOverrideRegistered();
+
     if (!FModuleManager::Get().IsModuleLoaded(TEXT("AVEncoder")))
     {
-        FModuleManager::Get().LoadModule(TEXT("AVEncoder"));
+        if (!FModuleManager::Get().LoadModule(TEXT("AVEncoder")))
+        {
+            LastErrorMessage = TEXT("Failed to load the AVEncoder module. Configure the module override path if it lives outside the engine.");
+            UE_LOG(LogTemp, Error, TEXT("%s"), *LastErrorMessage);
+            return;
+        }
     }
 
     AVEncoder::FVideoEncoderInput::FCreateParameters CreateParameters;

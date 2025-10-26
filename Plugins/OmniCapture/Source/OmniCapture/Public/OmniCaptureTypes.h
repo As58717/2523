@@ -185,6 +185,7 @@ struct OMNICAPTURE_API FOmniCaptureSettings
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") bool bZeroCopy = true;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC", meta = (ClampMin = 0, UIMin = 0)) int32 RingBufferCapacity = 6;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") EOmniCaptureRingBufferPolicy RingBufferPolicy = EOmniCaptureRingBufferPolicy::DropOldest;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") FString AVEncoderModulePathOverride;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NVENC") FString NVENCDllPathOverride;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") bool bOpenPreviewOnFinalize = false;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Preview") EOmniCapturePreviewView PreviewVisualization = EOmniCapturePreviewView::StereoComposite;

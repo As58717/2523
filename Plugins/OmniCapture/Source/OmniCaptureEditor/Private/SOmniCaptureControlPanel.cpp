@@ -1117,6 +1117,33 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
+                .Text(LOCTEXT("AVEncoderModuleOverrideLabel", "AVEncoder module override"))
+                .ToolTipText(LOCTEXT("AVEncoderModuleOverrideTooltip", "Optional absolute path to the folder that contains AVEncoder binaries."))
+            ]
+            + SHorizontalBox::Slot()
+            .Padding(8.f, 0.f, 0.f, 0.f)
+            [
+                SNew(SEditableTextBox)
+                .Text_Lambda([this]()
+                {
+                    return GetAVEncoderModuleOverrideText();
+                })
+                .HintText(LOCTEXT("AVEncoderModuleOverrideHint", "Leave empty to use engine module paths"))
+                .OnTextCommitted(this, &SOmniCaptureControlPanel::HandleAVEncoderModuleOverrideCommitted)
+                .MinDesiredWidth(320.f)
+                .ToolTipText(LOCTEXT("AVEncoderModuleOverrideTextTooltip", "Provide a custom directory if the AVEncoder plugin is stored outside the engine installation."))
+            ]
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(0.f, 4.f, 0.f, 0.f)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
                 .Text(LOCTEXT("NVENCDllOverrideLabel", "NVENC DLL override"))
                 .ToolTipText(LOCTEXT("NVENCDllOverrideTooltip", "Optional absolute path to nvEncodeAPI64.dll or the folder that contains it."))
             ]
@@ -2093,6 +2120,7 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
     FFeatureAvailabilityState NewState;
 
     FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    FOmniCaptureNVENCEncoder::SetModuleOverridePath(Snapshot.AVEncoderModulePathOverride);
     FOmniCaptureNVENCEncoder::SetDllOverridePath(Snapshot.NVENCDllPathOverride);
     const FOmniNVENCCapabilities Caps = FOmniCaptureNVENCEncoder::QueryCapabilities();
 
@@ -2280,6 +2308,32 @@ FText SOmniCaptureControlPanel::GetNVENCWarningText() const
 EVisibility SOmniCaptureControlPanel::GetNVENCWarningVisibility() const
 {
     return FeatureAvailability.NVENC.bAvailable ? EVisibility::Collapsed : EVisibility::Visible;
+}
+
+FText SOmniCaptureControlPanel::GetAVEncoderModuleOverrideText() const
+{
+    return FText::FromString(GetSettingsSnapshot().AVEncoderModulePathOverride);
+}
+
+void SOmniCaptureControlPanel::HandleAVEncoderModuleOverrideCommitted(const FText& NewText, ETextCommit::Type CommitType)
+{
+    FString CleanPath = NewText.ToString();
+    CleanPath.TrimStartAndEndInline();
+
+    const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    const bool bChanged = !Snapshot.AVEncoderModulePathOverride.Equals(CleanPath, ESearchCase::CaseSensitive);
+
+    if (bChanged)
+    {
+        ModifyCaptureSettings([CleanPath](FOmniCaptureSettings& Settings)
+        {
+            Settings.AVEncoderModulePathOverride = CleanPath;
+        });
+    }
+
+    FOmniCaptureNVENCEncoder::SetModuleOverridePath(CleanPath);
+    FOmniCaptureNVENCEncoder::InvalidateCachedCapabilities();
+    RefreshFeatureAvailability(true);
 }
 
 FText SOmniCaptureControlPanel::GetNVENCDllOverrideText() const
@@ -2574,6 +2628,7 @@ void SOmniCaptureControlPanel::ModifyCaptureSettings(TFunctionRef<void(FOmniCapt
     Mutator(Settings->CaptureSettings);
     Settings->SaveConfig();
 
+    FOmniCaptureNVENCEncoder::SetModuleOverridePath(Settings->CaptureSettings.AVEncoderModulePathOverride);
     FOmniCaptureNVENCEncoder::SetDllOverridePath(Settings->CaptureSettings.NVENCDllPathOverride);
 
     if (SettingsView.IsValid())

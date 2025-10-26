@@ -156,6 +156,7 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
 
     OriginalSettings = InSettings;
     ActiveSettings = InSettings;
+    FOmniCaptureNVENCEncoder::SetModuleOverridePath(ActiveSettings.AVEncoderModulePathOverride);
     FOmniCaptureNVENCEncoder::SetDllOverridePath(ActiveSettings.NVENCDllPathOverride);
     FOmniCaptureNVENCEncoder::InvalidateCachedCapabilities();
     ActiveSettings.OutputDirectory = BuildOutputDirectory();
