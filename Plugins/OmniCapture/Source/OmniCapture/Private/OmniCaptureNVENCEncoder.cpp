@@ -64,7 +64,9 @@ namespace
         FString ApiFailureReason;
         FString SessionFailureReason;
         FString CodecFailureReason;
-        FString FormatFailureReason;
+        FString NV12FailureReason;
+        FString P010FailureReason;
+        FString BGRAFailureReason;
         FString HardwareFailureReason;
     };
 
@@ -318,47 +320,73 @@ namespace
         }
 
         FString SessionFailure;
-        if (TryCreateEncoderSession(AVEncoder::ECodec::H264, AVEncoder::EVideoFormat::NV12, SessionFailure))
+        if (!TryCreateEncoderSession(AVEncoder::ECodec::H264, AVEncoder::EVideoFormat::BGRA8, SessionFailure))
         {
-            Result.bSessionOpenable = true;
-            Result.bSupportsH264 = true;
+            Result.SessionFailureReason = SessionFailure;
+            Result.BGRAFailureReason = SessionFailure;
+            Result.HardwareFailureReason = SessionFailure;
+            return Result;
+        }
+
+        Result.bSessionOpenable = true;
+        Result.bSupportsH264 = true;
+        Result.bSupportsBGRA = true;
+
+        FString Nv12Failure;
+        if (TryCreateEncoderSession(AVEncoder::ECodec::H264, AVEncoder::EVideoFormat::NV12, Nv12Failure))
+        {
             Result.bSupportsNV12 = true;
-
-            FString HevcFailure;
-            if (TryCreateEncoderSession(AVEncoder::ECodec::HEVC, AVEncoder::EVideoFormat::NV12, HevcFailure))
-            {
-                Result.bSupportsHEVC = true;
-            }
-            else
-            {
-                Result.CodecFailureReason = HevcFailure;
-            }
-
-            FString P010Failure;
-            if (TryCreateEncoderSession(AVEncoder::ECodec::HEVC, AVEncoder::EVideoFormat::P010, P010Failure))
-            {
-                Result.bSupportsP010 = true;
-            }
-            else
-            {
-                Result.FormatFailureReason = P010Failure;
-            }
-
-            FString BgraFailure;
-            if (TryCreateEncoderSession(AVEncoder::ECodec::H264, AVEncoder::EVideoFormat::BGRA8, BgraFailure))
-            {
-                Result.bSupportsBGRA = true;
-            }
-            else if (Result.FormatFailureReason.IsEmpty())
-            {
-                Result.FormatFailureReason = BgraFailure;
-            }
         }
         else
         {
-            Result.SessionFailureReason = SessionFailure;
-            Result.HardwareFailureReason = SessionFailure;
-            return Result;
+            Result.NV12FailureReason = Nv12Failure;
+        }
+
+        bool bHevcSuccess = false;
+        FString HevcFailure;
+        if (TryCreateEncoderSession(AVEncoder::ECodec::HEVC, AVEncoder::EVideoFormat::NV12, HevcFailure))
+        {
+            Result.bSupportsHEVC = true;
+            bHevcSuccess = true;
+        }
+        else
+        {
+            Result.CodecFailureReason = HevcFailure;
+        }
+
+        FString P010Failure;
+        if (TryCreateEncoderSession(AVEncoder::ECodec::HEVC, AVEncoder::EVideoFormat::P010, P010Failure))
+        {
+            Result.bSupportsP010 = true;
+            Result.bSupportsHEVC = true;
+            bHevcSuccess = true;
+        }
+        else
+        {
+            Result.P010FailureReason = P010Failure;
+        }
+
+        if (!Result.bSupportsNV12 && Result.NV12FailureReason.IsEmpty())
+        {
+            Result.NV12FailureReason = TEXT("NV12 input format is not available on this NVENC hardware.");
+        }
+
+        if (!Result.bSupportsP010 && Result.P010FailureReason.IsEmpty())
+        {
+            Result.P010FailureReason = TEXT("10-bit P010 input is not available on this NVENC hardware.");
+        }
+
+        if (!bHevcSuccess)
+        {
+            if (!Result.P010FailureReason.IsEmpty())
+            {
+                Result.CodecFailureReason = Result.P010FailureReason;
+            }
+            Result.bSupportsHEVC = false;
+        }
+        else
+        {
+            Result.CodecFailureReason.Reset();
         }
 
         Result.HardwareFailureReason = TEXT("");
@@ -422,10 +450,15 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
     Caps.bDllPresent = Probe.bDllPresent;
     Caps.bApisReady = Probe.bApisReady;
     Caps.bSessionOpenable = Probe.bSessionOpenable;
+
+    const bool bEngineSupportsNV12 = SupportsColorFormat(EOmniCaptureColorFormat::NV12);
+    const bool bEngineSupportsP010 = SupportsColorFormat(EOmniCaptureColorFormat::P010);
+    const bool bEngineSupportsBGRA = SupportsColorFormat(EOmniCaptureColorFormat::BGRA);
+
     Caps.bSupportsHEVC = Probe.bSupportsHEVC;
-    Caps.bSupportsNV12 = Probe.bSupportsNV12 && SupportsColorFormat(EOmniCaptureColorFormat::NV12);
-    Caps.bSupportsP010 = Probe.bSupportsP010 && SupportsColorFormat(EOmniCaptureColorFormat::P010);
-    Caps.bSupportsBGRA = Probe.bSupportsBGRA && SupportsColorFormat(EOmniCaptureColorFormat::BGRA);
+    Caps.bSupportsNV12 = Probe.bSupportsNV12 && bEngineSupportsNV12;
+    Caps.bSupportsP010 = Probe.bSupportsP010 && bEngineSupportsP010;
+    Caps.bSupportsBGRA = Probe.bSupportsBGRA && bEngineSupportsBGRA;
     Caps.bSupports10Bit = Caps.bSupportsP010;
     Caps.bHardwareAvailable = Caps.bDllPresent && Caps.bApisReady && Caps.bSessionOpenable;
 
@@ -433,8 +466,39 @@ FOmniNVENCCapabilities FOmniCaptureNVENCEncoder::QueryCapabilities()
     Caps.ApiFailureReason = Probe.ApiFailureReason;
     Caps.SessionFailureReason = Probe.SessionFailureReason;
     Caps.CodecFailureReason = Probe.CodecFailureReason;
-    Caps.FormatFailureReason = Probe.FormatFailureReason;
+    Caps.NV12FailureReason = Probe.NV12FailureReason;
+    Caps.P010FailureReason = Probe.P010FailureReason;
+    Caps.BGRAFailureReason = Probe.BGRAFailureReason;
     Caps.HardwareFailureReason = Probe.HardwareFailureReason;
+
+    if (!Caps.bSupportsNV12)
+    {
+        if (Probe.bSupportsNV12 && !bEngineSupportsNV12)
+        {
+            Caps.NV12FailureReason = TEXT("NV12 pixel format unsupported by this engine build or active RHI.");
+        }
+        else if (Caps.NV12FailureReason.IsEmpty())
+        {
+            Caps.NV12FailureReason = TEXT("NV12 input format is not available on this NVENC hardware.");
+        }
+    }
+
+    if (!Caps.bSupportsP010)
+    {
+        if (Probe.bSupportsP010 && !bEngineSupportsP010)
+        {
+            Caps.P010FailureReason = TEXT("P010 pixel format unsupported by this engine build or active RHI.");
+        }
+        else if (Caps.P010FailureReason.IsEmpty())
+        {
+            Caps.P010FailureReason = TEXT("10-bit P010 input is not available on this NVENC hardware.");
+        }
+    }
+
+    if (!Caps.bSupportsBGRA && Caps.BGRAFailureReason.IsEmpty() && Probe.bSupportsBGRA)
+    {
+        Caps.BGRAFailureReason = TEXT("BGRA input is not available with the detected NVENC runtime.");
+    }
 #else
     Caps.bHardwareAvailable = false;
     Caps.DllFailureReason = TEXT("NVENC support is only available on Windows builds with AVEncoder.");
