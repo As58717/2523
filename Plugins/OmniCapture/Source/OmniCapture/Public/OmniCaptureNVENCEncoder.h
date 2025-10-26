@@ -35,7 +35,9 @@ struct FOmniNVENCCapabilities
     FString ApiFailureReason;
     FString SessionFailureReason;
     FString CodecFailureReason;
-    FString FormatFailureReason;
+    FString NV12FailureReason;
+    FString P010FailureReason;
+    FString BGRAFailureReason;
     FString HardwareFailureReason;
     FString AdapterName;
     FString DriverVersion;

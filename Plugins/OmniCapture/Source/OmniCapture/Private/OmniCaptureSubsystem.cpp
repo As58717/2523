@@ -976,9 +976,9 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
         }
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::P010 && !Caps.bSupports10Bit)
         {
-            if (!Caps.FormatFailureReason.IsEmpty())
+            if (!Caps.P010FailureReason.IsEmpty())
             {
-                AddWarningUnique(FString::Printf(TEXT("P010 / Main10 NVENC path unavailable: %s"), *Caps.FormatFailureReason));
+                AddWarningUnique(FString::Printf(TEXT("P010 / Main10 NVENC path unavailable: %s"), *Caps.P010FailureReason));
             }
             else
             {
@@ -988,9 +988,9 @@ bool UOmniCaptureSubsystem::ValidateEnvironment()
         }
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::NV12 && !Caps.bSupportsNV12)
         {
-            if (!Caps.FormatFailureReason.IsEmpty())
+            if (!Caps.NV12FailureReason.IsEmpty())
             {
-                AddWarningUnique(FString::Printf(TEXT("NV12 NVENC path unavailable: %s"), *Caps.FormatFailureReason));
+                AddWarningUnique(FString::Printf(TEXT("NV12 NVENC path unavailable: %s"), *Caps.NV12FailureReason));
             }
             else
             {
@@ -1116,14 +1116,14 @@ bool UOmniCaptureSubsystem::ApplyFallbacks(FString* OutFailureReason)
 
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::P010 && !Caps.bSupports10Bit)
         {
-            const FString Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("P010 unsupported - switching to NV12") : FString::Printf(TEXT("P010 unsupported (%s) - switching to NV12"), *Caps.FormatFailureReason);
+            const FString Reason = Caps.P010FailureReason.IsEmpty() ? TEXT("P010 unsupported - switching to NV12") : FString::Printf(TEXT("P010 unsupported (%s) - switching to NV12"), *Caps.P010FailureReason);
             AddWarningUnique(Reason);
             ActiveSettings.NVENCColorFormat = EOmniCaptureColorFormat::NV12;
         }
 
         if (ActiveSettings.NVENCColorFormat == EOmniCaptureColorFormat::NV12 && !Caps.bSupportsNV12)
         {
-            const FString Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("NV12 unsupported - switching to BGRA") : FString::Printf(TEXT("NV12 unsupported (%s) - switching to BGRA"), *Caps.FormatFailureReason);
+            const FString Reason = Caps.NV12FailureReason.IsEmpty() ? TEXT("NV12 unsupported - switching to BGRA") : FString::Printf(TEXT("NV12 unsupported (%s) - switching to BGRA"), *Caps.NV12FailureReason);
             AddWarningUnique(Reason);
             ActiveSettings.NVENCColorFormat = EOmniCaptureColorFormat::BGRA;
         }

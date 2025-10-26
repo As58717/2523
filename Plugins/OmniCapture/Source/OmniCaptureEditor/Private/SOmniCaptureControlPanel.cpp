@@ -2173,7 +2173,7 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
     }
     else
     {
-        FString NV12Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("NV12 input format is not available on this NVENC hardware.") : Caps.FormatFailureReason;
+        FString NV12Reason = Caps.NV12FailureReason.IsEmpty() ? TEXT("NV12 input format is not available on this NVENC hardware.") : Caps.NV12FailureReason;
         NewState.NVENCNV12.Reason = FText::FromString(NV12Reason);
     }
 
@@ -2184,7 +2184,7 @@ void SOmniCaptureControlPanel::RefreshFeatureAvailability(bool bForceRefresh)
     }
     else
     {
-        FString P010Reason = Caps.FormatFailureReason.IsEmpty() ? TEXT("This NVENC hardware does not support 10-bit P010 input.") : Caps.FormatFailureReason;
+        FString P010Reason = Caps.P010FailureReason.IsEmpty() ? TEXT("This NVENC hardware does not support 10-bit P010 input.") : Caps.P010FailureReason;
         NewState.NVENCP010.Reason = FText::FromString(P010Reason);
     }
 
