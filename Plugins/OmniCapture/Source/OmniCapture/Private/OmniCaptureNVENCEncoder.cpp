@@ -167,23 +167,22 @@ namespace
             return false;
         }
 
-        static const TCHAR* CandidateNames[] = {
-            TEXT("AVEncoder.dll"),
-            TEXT("UnrealEditor-AVEncoder.dll"),
-            TEXT("UnrealGame-AVEncoder.dll"),
-            TEXT("UE4Editor-AVEncoder.dll"),
-            TEXT("UE4Game-AVEncoder.dll")
-        };
-
-        for (const TCHAR* Name : CandidateNames)
+        const FString Normalized = NormalizePath(Directory);
+        if (Normalized.IsEmpty() || !FPaths::DirectoryExists(Normalized))
         {
-            FString Candidate = FPaths::Combine(Directory, Name);
-            FPaths::MakePlatformFilename(Candidate);
-            if (FPaths::FileExists(Candidate))
+            return false;
+        }
+
+        TArray<FString> CandidateFiles;
+        IFileManager::Get().FindFiles(CandidateFiles, *(FPaths::Combine(Normalized, TEXT("*.dll"))), true, false);
+        for (const FString& FileName : CandidateFiles)
+        {
+            if (FileName.Contains(TEXT("AVEncoder"), ESearchCase::IgnoreCase))
             {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -815,6 +814,29 @@ void FOmniCaptureNVENCEncoder::SetModuleOverridePath(const FString& InOverridePa
         {
             NormalizedPath = FPaths::GetPath(NormalizedPath);
             FPaths::MakePlatformFilename(NormalizedPath);
+        }
+        else if (FPaths::DirectoryExists(NormalizedPath))
+        {
+#if PLATFORM_WINDOWS
+            if (!DirectoryContainsAVEncoderBinary(NormalizedPath))
+            {
+                const FString PlatformSubdir = FPlatformProcess::GetBinariesSubdirectory();
+                const FString BinariesPath = FPaths::Combine(NormalizedPath, TEXT("Binaries"), PlatformSubdir);
+                if (DirectoryContainsAVEncoderBinary(BinariesPath))
+                {
+                    NormalizedPath = BinariesPath;
+                }
+                else
+                {
+                    const FString PlatformPath = FPaths::Combine(NormalizedPath, PlatformSubdir);
+                    if (DirectoryContainsAVEncoderBinary(PlatformPath))
+                    {
+                        NormalizedPath = PlatformPath;
+                    }
+                }
+            }
+            FPaths::MakePlatformFilename(NormalizedPath);
+#endif
         }
     }
     else
