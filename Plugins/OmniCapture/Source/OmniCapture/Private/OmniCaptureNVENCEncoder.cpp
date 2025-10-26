@@ -1,5 +1,6 @@
 #include "OmniCaptureNVENCEncoder.h"
 
+#include "HAL/FileManager.h"
 #include "HAL/PlatformFileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
@@ -19,6 +20,7 @@
 #define OMNI_HAS_RHI_ADAPTER 0
 #endif
 #include "GenericPlatform/GenericPlatformDriver.h"
+#include "Interfaces/IPluginManager.h"
 
 #if OMNI_WITH_AVENCODER
 #include "RHIResources.h"
@@ -111,6 +113,238 @@ namespace
         static FString OverridePath;
         return OverridePath;
     }
+
+    bool& GetAutoDetectModuleAttempted()
+    {
+        static bool bAttempted = false;
+        return bAttempted;
+    }
+
+    FString& GetAutoDetectedModulePath()
+    {
+        static FString CachedPath;
+        return CachedPath;
+    }
+
+    bool& GetAutoDetectDllAttempted()
+    {
+        static bool bAttempted = false;
+        return bAttempted;
+    }
+
+    FString& GetAutoDetectedDllPath()
+    {
+        static FString CachedPath;
+        return CachedPath;
+    }
+
+    FString NormalizePath(const FString& InPath)
+    {
+        FString Result = InPath;
+        Result.TrimStartAndEndInline();
+        if (!Result.IsEmpty())
+        {
+            Result = FPaths::ConvertRelativePathToFull(Result);
+            FPaths::MakePlatformFilename(Result);
+        }
+        return Result;
+    }
+
+#if OMNI_WITH_AVENCODER && PLATFORM_WINDOWS
+    void AddUniqueDirectory(TArray<FString>& Directories, const FString& Directory)
+    {
+        const FString Normalized = NormalizePath(Directory);
+        if (!Normalized.IsEmpty())
+        {
+            Directories.AddUnique(Normalized);
+        }
+    }
+
+    bool DirectoryContainsAVEncoderBinary(const FString& Directory)
+    {
+        if (Directory.IsEmpty())
+        {
+            return false;
+        }
+
+        static const TCHAR* CandidateNames[] = {
+            TEXT("AVEncoder.dll"),
+            TEXT("UnrealEditor-AVEncoder.dll"),
+            TEXT("UnrealGame-AVEncoder.dll"),
+            TEXT("UE4Editor-AVEncoder.dll"),
+            TEXT("UE4Game-AVEncoder.dll")
+        };
+
+        for (const TCHAR* Name : CandidateNames)
+        {
+            FString Candidate = FPaths::Combine(Directory, Name);
+            FPaths::MakePlatformFilename(Candidate);
+            if (FPaths::FileExists(Candidate))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    FString DetectAVEncoderModuleDirectory()
+    {
+        if (GetAutoDetectModuleAttempted())
+        {
+            return GetAutoDetectedModulePath();
+        }
+
+        GetAutoDetectModuleAttempted() = true;
+        FString& CachedPath = GetAutoDetectedModulePath();
+
+        TArray<FString> CandidateDirectories;
+        AddUniqueDirectory(CandidateDirectories, FPlatformProcess::ExecutableDir());
+        AddUniqueDirectory(CandidateDirectories, FPaths::Combine(FPaths::EngineDir(), TEXT("Binaries/Win64")));
+        AddUniqueDirectory(CandidateDirectories, FPaths::Combine(FPaths::EngineDir(), TEXT("Plugins/Media/AVEncoder/Binaries/Win64")));
+        AddUniqueDirectory(CandidateDirectories, FPaths::Combine(FPaths::ProjectDir(), TEXT("Binaries/Win64")));
+
+        if (IPluginManager::Get().IsInitialized())
+        {
+            if (TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("AVEncoder")))
+            {
+                AddUniqueDirectory(CandidateDirectories, FPaths::Combine(Plugin->GetBaseDir(), TEXT("Binaries/Win64")));
+            }
+        }
+
+        for (const FString& Candidate : CandidateDirectories)
+        {
+            if (DirectoryContainsAVEncoderBinary(Candidate))
+            {
+                CachedPath = Candidate;
+                return CachedPath;
+            }
+        }
+
+        CachedPath.Reset();
+        return CachedPath;
+    }
+
+    FString CheckDirectoryForNVENCDll(const FString& Directory)
+    {
+        if (Directory.IsEmpty())
+        {
+            return FString();
+        }
+
+        FString Candidate = FPaths::Combine(Directory, TEXT("nvEncodeAPI64.dll"));
+        FPaths::MakePlatformFilename(Candidate);
+        return FPaths::FileExists(Candidate) ? Candidate : FString();
+    }
+
+    FString DetectNVENCDllPath()
+    {
+        if (GetAutoDetectDllAttempted())
+        {
+            return GetAutoDetectedDllPath();
+        }
+
+        GetAutoDetectDllAttempted() = true;
+        FString& CachedPath = GetAutoDetectedDllPath();
+
+        TArray<FString> CandidateDirectories;
+        AddUniqueDirectory(CandidateDirectories, FPlatformProcess::ExecutableDir());
+        AddUniqueDirectory(CandidateDirectories, FPaths::Combine(FPaths::EngineDir(), TEXT("Binaries/Win64")));
+        AddUniqueDirectory(CandidateDirectories, FPaths::Combine(FPaths::ProjectDir(), TEXT("Binaries/Win64")));
+
+        const FString SystemRoot = NormalizePath(FPlatformMisc::GetEnvironmentVariable(TEXT("SystemRoot")));
+        if (!SystemRoot.IsEmpty())
+        {
+            AddUniqueDirectory(CandidateDirectories, FPaths::Combine(SystemRoot, TEXT("System32")));
+            AddUniqueDirectory(CandidateDirectories, FPaths::Combine(SystemRoot, TEXT("SysWOW64")));
+        }
+
+        for (const FString& Directory : CandidateDirectories)
+        {
+            const FString FoundDll = CheckDirectoryForNVENCDll(Directory);
+            if (!FoundDll.IsEmpty())
+            {
+                CachedPath = FoundDll;
+                return CachedPath;
+            }
+        }
+
+        if (!SystemRoot.IsEmpty())
+        {
+            const FString DriverStore = FPaths::Combine(SystemRoot, TEXT("System32/DriverStore/FileRepository"));
+            if (FPaths::DirectoryExists(DriverStore))
+            {
+                TArray<FString> FoundDlls;
+                IFileManager::Get().FindFilesRecursive(FoundDlls, *DriverStore, TEXT("nvencodeapi64.dll"), true, false);
+                if (FoundDlls.Num() > 0)
+                {
+                    FoundDlls.Sort([](const FString& A, const FString& B)
+                    {
+                        return A > B;
+                    });
+                    FString FirstMatch = NormalizePath(FoundDlls[0]);
+                    if (!FirstMatch.IsEmpty())
+                    {
+                        CachedPath = FirstMatch;
+                        return CachedPath;
+                    }
+                }
+            }
+        }
+
+        const TCHAR* ProgramFilesVars[] = { TEXT("ProgramFiles"), TEXT("ProgramFiles(x86)") };
+        for (const TCHAR* EnvVar : ProgramFilesVars)
+        {
+            const FString Root = NormalizePath(FPlatformMisc::GetEnvironmentVariable(EnvVar));
+            if (Root.IsEmpty())
+            {
+                continue;
+            }
+
+            const FString NvidiaRoot = FPaths::Combine(Root, TEXT("NVIDIA Corporation"));
+            if (FPaths::DirectoryExists(NvidiaRoot))
+            {
+                TArray<FString> FoundDlls;
+                IFileManager::Get().FindFilesRecursive(FoundDlls, *NvidiaRoot, TEXT("nvencodeapi64.dll"), true, false);
+                if (FoundDlls.Num() > 0)
+                {
+                    FoundDlls.Sort([](const FString& A, const FString& B)
+                    {
+                        return A > B;
+                    });
+                    FString FirstMatch = NormalizePath(FoundDlls[0]);
+                    if (!FirstMatch.IsEmpty())
+                    {
+                        CachedPath = FirstMatch;
+                        return CachedPath;
+                    }
+                }
+            }
+        }
+
+        CachedPath.Reset();
+        return CachedPath;
+    }
+#else
+    FString DetectAVEncoderModuleDirectory()
+    {
+        if (!GetAutoDetectModuleAttempted())
+        {
+            GetAutoDetectModuleAttempted() = true;
+            GetAutoDetectedModulePath().Reset();
+        }
+        return GetAutoDetectedModulePath();
+    }
+
+    FString DetectNVENCDllPath()
+    {
+        if (!GetAutoDetectDllAttempted())
+        {
+            GetAutoDetectDllAttempted() = true;
+            GetAutoDetectedDllPath().Reset();
+        }
+        return GetAutoDetectedDllPath();
+    }
+#endif // OMNI_WITH_AVENCODER && PLATFORM_WINDOWS
 
     bool& GetModuleDirectoryRegisteredFlag()
     {
@@ -583,6 +817,10 @@ void FOmniCaptureNVENCEncoder::SetModuleOverridePath(const FString& InOverridePa
             FPaths::MakePlatformFilename(NormalizedPath);
         }
     }
+    else
+    {
+        NormalizedPath = DetectAVEncoderModuleDirectory();
+    }
 
     const bool bHasPath = !NormalizedPath.IsEmpty();
     bool bChanged = false;
@@ -627,6 +865,10 @@ void FOmniCaptureNVENCEncoder::SetDllOverridePath(const FString& InOverridePath)
         NormalizedPath = FPaths::ConvertRelativePathToFull(NormalizedPath);
         FPaths::MakePlatformFilename(NormalizedPath);
     }
+    else
+    {
+        NormalizedPath = DetectNVENCDllPath();
+    }
 
     bool bChanged = false;
     {
@@ -653,6 +895,18 @@ void FOmniCaptureNVENCEncoder::InvalidateCachedCapabilities()
 #if OMNI_WITH_AVENCODER
     FScopeLock CacheLock(&GetProbeCacheMutex());
     GetProbeValidFlag() = false;
+
+    {
+        FScopeLock OverrideLock(&GetModuleOverrideMutex());
+        GetAutoDetectModuleAttempted() = false;
+        GetAutoDetectedModulePath().Reset();
+    }
+
+    {
+        FScopeLock OverrideLock(&GetDllOverrideMutex());
+        GetAutoDetectDllAttempted() = false;
+        GetAutoDetectedDllPath().Reset();
+    }
 #endif
 }
 
