@@ -2279,7 +2279,8 @@ bool SOmniCaptureControlPanel::IsAnyComboBoxOpen() const
         || IsComboOpen(FisheyeTypeCombo)
         || IsComboOpen(StereoLayoutCombo)
         || IsComboOpen(ImageFormatCombo)
-        || IsComboOpen(PNGBitDepthCombo);
+        || IsComboOpen(PNGBitDepthCombo)
+        || IsComboOpen(OutputDirectoryModeCombo);
 }
 
 bool SOmniCaptureControlPanel::IsOutputFormatSelectable(EOmniOutputFormat Format) const
@@ -2520,7 +2521,8 @@ void SOmniCaptureControlPanel::UpdateOutputDirectoryDisplay()
         OutputDirectoryTextBlock->SetText(FText::Format(LOCTEXT("OutputDirectoryFormat", "Output Folder: {0}{1}"), FText::FromString(DisplayPath), ModeSuffix));
     }
 
-    if (OutputDirectoryModeCombo.IsValid())
+    const bool bSkipComboUpdates = IsAnyComboBoxOpen();
+    if (!bSkipComboUpdates && OutputDirectoryModeCombo.IsValid())
     {
         OutputDirectoryModeCombo->SetSelectedItem(FindOutputDirectoryModeOption(Mode));
     }
@@ -2582,35 +2584,36 @@ void SOmniCaptureControlPanel::RefreshConfigurationSummary()
         EncoderAlignmentTextBlock->SetText(FText::Format(LOCTEXT("AlignmentSummary", "Encoder alignment: {0}-pixel"), FText::AsNumber(Alignment)));
     }
 
-    if (StereoLayoutCombo.IsValid())
+    const bool bSkipComboUpdates = IsAnyComboBoxOpen();
+    if (!bSkipComboUpdates && StereoLayoutCombo.IsValid())
     {
         StereoLayoutCombo->SetSelectedItem(FindStereoLayoutOption(Snapshot.StereoLayout));
     }
-    if (OutputFormatCombo.IsValid())
+    if (!bSkipComboUpdates && OutputFormatCombo.IsValid())
     {
         OutputFormatCombo->SetSelectedItem(FindOutputFormatOption(Snapshot.OutputFormat));
     }
-    if (CodecCombo.IsValid())
+    if (!bSkipComboUpdates && CodecCombo.IsValid())
     {
         CodecCombo->SetSelectedItem(FindCodecOption(Snapshot.Codec));
     }
-    if (ColorFormatCombo.IsValid())
+    if (!bSkipComboUpdates && ColorFormatCombo.IsValid())
     {
         ColorFormatCombo->SetSelectedItem(FindColorFormatOption(Snapshot.NVENCColorFormat));
     }
-    if (ProjectionCombo.IsValid())
+    if (!bSkipComboUpdates && ProjectionCombo.IsValid())
     {
         ProjectionCombo->SetSelectedItem(FindProjectionOption(Snapshot.Projection));
     }
-    if (FisheyeTypeCombo.IsValid())
+    if (!bSkipComboUpdates && FisheyeTypeCombo.IsValid())
     {
         FisheyeTypeCombo->SetSelectedItem(FindFisheyeTypeOption(Snapshot.FisheyeType));
     }
-    if (ImageFormatCombo.IsValid())
+    if (!bSkipComboUpdates && ImageFormatCombo.IsValid())
     {
         ImageFormatCombo->SetSelectedItem(FindImageFormatOption(Snapshot.ImageFormat));
     }
-    if (PNGBitDepthCombo.IsValid())
+    if (!bSkipComboUpdates && PNGBitDepthCombo.IsValid())
     {
         PNGBitDepthCombo->SetSelectedItem(FindPNGBitDepthOption(Snapshot.PNGBitDepth));
     }
