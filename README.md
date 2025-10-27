@@ -27,7 +27,7 @@ The subsystem can toggle critical rendering tech before capture starts and resto
 
 ## Image export formats
 
-OmniCapture exports linear or sRGB frames to **PNG**, **JPEG**, **EXR**, and **BMP** sequences. The EXR path preserves the floating-point payload for alpha/stencil workflows, while the BMP exporter helps teams that require legacy offline review tools. 【F:Plugins/OmniCapture/Source/OmniCapture/Private/OmniCaptureImageWriter.cpp†L84-L215】
+OmniCapture exports linear or sRGB frames to **PNG**, **JPEG**, **EXR**, and **BMP** sequences. The PNG writer exposes 8-bit, 16-bit, and 32-bit color depth controls so you can balance fidelity and disk footprint per deliverable, the EXR path preserves the floating-point payload for alpha/stencil workflows, while the BMP exporter helps teams that require legacy offline review tools. 【F:Plugins/OmniCapture/Source/OmniCapture/Private/OmniCaptureImageWriter.cpp†L398-L545】【F:Plugins/OmniCapture/Source/OmniCaptureEditor/Private/SOmniCaptureControlPanel.cpp†L120-L279】
 
 ## How to use the new options
 

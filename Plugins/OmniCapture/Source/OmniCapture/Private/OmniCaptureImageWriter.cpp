@@ -431,6 +431,26 @@ bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData,
         return WritePNGWithRowSource(FilePath, Size, ERGBFormat::BGRA, 16, PrepareRows);
     }
 
+    if (TargetPNGBitDepth == EOmniCapturePNGBitDepth::BitDepth8)
+    {
+        auto PrepareRows = [&Pixels, &Size](int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)
+        {
+            const int64 RequiredSize = BytesPerRow * RowCount;
+            TempBuffer.SetNum(RequiredSize, EAllowShrinking::No);
+
+            for (int32 Row = 0; Row < RowCount; ++Row)
+            {
+                uint8* RowData = TempBuffer.GetData() + BytesPerRow * Row;
+                RowPointers[Row] = RowData;
+                const int64 PixelRowStart = static_cast<int64>(RowStart + Row) * Size.X;
+                const uint8* Source = reinterpret_cast<const uint8*>(Pixels.GetData() + PixelRowStart);
+                FMemory::Memcpy(RowData, Source, BytesPerRow);
+            }
+        };
+
+        return WritePNGWithRowSource(FilePath, Size, ERGBFormat::BGRA, 8, PrepareRows);
+    }
+
     return WritePNGRaw(FilePath, Size, Pixels.GetData(), Pixels.Num() * sizeof(FColor), ERGBFormat::BGRA, 8);
 }
 

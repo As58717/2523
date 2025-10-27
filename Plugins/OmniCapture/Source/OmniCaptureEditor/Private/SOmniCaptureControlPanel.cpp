@@ -131,6 +131,8 @@ namespace
     {
         switch (BitDepth)
         {
+        case EOmniCapturePNGBitDepth::BitDepth8:
+            return LOCTEXT("PNGBitDepth8", "8-bit Color");
         case EOmniCapturePNGBitDepth::BitDepth16:
             return LOCTEXT("PNGBitDepth16", "16-bit Color");
         case EOmniCapturePNGBitDepth::BitDepth32:
@@ -249,6 +251,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
     ImageFormatOptions.Add(MakeShared<TEnumOptionValue<EOmniCaptureImageFormat>>(EOmniCaptureImageFormat::BMP));
 
     PNGBitDepthOptions.Reset();
+    PNGBitDepthOptions.Add(MakeShared<TEnumOptionValue<EOmniCapturePNGBitDepth>>(EOmniCapturePNGBitDepth::BitDepth8));
     PNGBitDepthOptions.Add(MakeShared<TEnumOptionValue<EOmniCapturePNGBitDepth>>(EOmniCapturePNGBitDepth::BitDepth16));
     PNGBitDepthOptions.Add(MakeShared<TEnumOptionValue<EOmniCapturePNGBitDepth>>(EOmniCapturePNGBitDepth::BitDepth32));
 
@@ -3282,7 +3285,7 @@ TSharedRef<SWidget> SOmniCaptureControlPanel::GeneratePNGBitDepthOption(TEnumOpt
 {
     const EOmniCapturePNGBitDepth BitDepth = InValue.IsValid()
         ? static_cast<EOmniCapturePNGBitDepth>(InValue->GetValue())
-        : EOmniCapturePNGBitDepth::BitDepth32;
+        : EOmniCapturePNGBitDepth::BitDepth8;
     return SNew(STextBlock).Text(PNGBitDepthToText(BitDepth));
 }
 
