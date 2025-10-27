@@ -10,6 +10,7 @@
 #include "RHIGPUReadback.h"
 #include "RHIStaticStates.h"
 #include "RenderTargetPool.h"
+#include "PixelFormat.h"
 #if __has_include("RenderGraphUtils/Public/ComputeShaderUtils.h")
 #include "RenderGraphUtils/Public/ComputeShaderUtils.h"
 #elif __has_include("RenderGraphUtils/ComputeShaderUtils.h")
@@ -25,7 +26,8 @@ namespace
     struct FCPUFaceData
     {
         int32 Resolution = 0;
-        TArray<FFloat16Color> Pixels;
+        EOmniCapturePixelPrecision Precision = EOmniCapturePixelPrecision::Unknown;
+        TArray<FLinearColor> Pixels;
 
         bool IsValid() const
         {
@@ -36,6 +38,7 @@ namespace
     struct FCPUCubemap
     {
         FCPUFaceData Faces[6];
+        EOmniCapturePixelPrecision Precision = EOmniCapturePixelPrecision::Unknown;
 
         bool IsValid() const
         {
@@ -47,9 +50,53 @@ namespace
                 }
             }
 
-            return true;
+            return Precision != EOmniCapturePixelPrecision::Unknown;
         }
     };
+
+    EOmniCapturePixelPrecision PixelPrecisionFromFormat(EPixelFormat Format)
+    {
+        switch (Format)
+        {
+        case PF_A32B32G32R32F:
+            return EOmniCapturePixelPrecision::FullFloat;
+        case PF_FloatRGBA:
+        case PF_FloatRGB:
+        case PF_A16B16G16R16F:
+            return EOmniCapturePixelPrecision::HalfFloat;
+        default:
+            return EOmniCapturePixelPrecision::Unknown;
+        }
+    }
+
+    EOmniCapturePixelPrecision ResolvePrecisionFromTextures(const TArray<FTextureRHIRef, TInlineAllocator<6>>& Textures)
+    {
+        for (const FTextureRHIRef& Texture : Textures)
+        {
+            if (Texture.IsValid())
+            {
+                return PixelPrecisionFromFormat(Texture->GetFormat());
+            }
+        }
+
+        return EOmniCapturePixelPrecision::Unknown;
+    }
+
+    EOmniCapturePixelPrecision ResolvePrecisionFromEye(const FOmniEyeCapture& Eye)
+    {
+        if (UTextureRenderTarget2D* RenderTarget = Eye.GetPrimaryRenderTarget())
+        {
+            return PixelPrecisionFromFormat(RenderTarget->GetFormat());
+        }
+
+        return EOmniCapturePixelPrecision::Unknown;
+    }
+
+    EPixelFormat GetPixelFormatForPrecision(EOmniCapturePixelPrecision Precision)
+    {
+        return Precision == EOmniCapturePixelPrecision::FullFloat ? PF_A32B32G32R32F : PF_FloatRGBA;
+    }
+
 
     class FOmniEquirectCS final : public FGlobalShader
     {
@@ -208,11 +255,32 @@ namespace
         }
 
         OutFace.Pixels.Reset();
+        OutFace.Precision = PixelPrecisionFromFormat(RenderTarget->GetFormat());
+
         FReadSurfaceDataFlags Flags(RCM_MinMax);
         Flags.SetLinearToGamma(false);
-        if (!Resource->ReadFloat16Pixels(OutFace.Pixels, Flags, FIntRect()))
+
+        if (OutFace.Precision == EOmniCapturePixelPrecision::FullFloat)
         {
-            return false;
+            if (!Resource->ReadLinearColorPixels(OutFace.Pixels, Flags, FIntRect()))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            TArray<FFloat16Color> HalfPixels;
+            if (!Resource->ReadFloat16Pixels(HalfPixels, Flags, FIntRect()))
+            {
+                return false;
+            }
+
+            OutFace.Precision = EOmniCapturePixelPrecision::HalfFloat;
+            OutFace.Pixels.SetNum(HalfPixels.Num());
+            for (int32 Index = 0; Index < HalfPixels.Num(); ++Index)
+            {
+                OutFace.Pixels[Index] = FLinearColor(HalfPixels[Index]);
+            }
         }
 
         OutFace.Resolution = SizeX;
@@ -221,10 +289,22 @@ namespace
 
     bool BuildCPUCubemap(const FOmniEyeCapture& Eye, FCPUCubemap& OutCubemap)
     {
+        OutCubemap.Precision = EOmniCapturePixelPrecision::Unknown;
+
         for (int32 FaceIndex = 0; FaceIndex < 6; ++FaceIndex)
         {
             if (!ReadFaceData(Eye.Faces[FaceIndex].RenderTarget, OutCubemap.Faces[FaceIndex]))
             {
+                return false;
+            }
+
+            if (OutCubemap.Precision == EOmniCapturePixelPrecision::Unknown)
+            {
+                OutCubemap.Precision = OutCubemap.Faces[FaceIndex].Precision;
+            }
+            else if (OutCubemap.Precision != OutCubemap.Faces[FaceIndex].Precision)
+            {
+                OutCubemap.Precision = EOmniCapturePixelPrecision::Unknown;
                 return false;
             }
         }
@@ -480,14 +560,14 @@ namespace
         return OutputTexture;
     }
 
-    FRDGTextureRef BuildFaceArray(FRDGBuilder& GraphBuilder, const TArray<FTextureRHIRef, TInlineAllocator<6>>& Faces, int32 FaceResolution, const TCHAR* DebugName)
+    FRDGTextureRef BuildFaceArray(FRDGBuilder& GraphBuilder, const TArray<FTextureRHIRef, TInlineAllocator<6>>& Faces, int32 FaceResolution, EPixelFormat PixelFormat, const TCHAR* DebugName)
     {
         if (Faces.Num() == 0)
         {
             return nullptr;
         }
 
-        FRDGTextureDesc ArrayDesc = FRDGTextureDesc::Create2DArray(FIntPoint(FaceResolution, FaceResolution), PF_FloatRGBA, FClearValueBinding::Transparent, TexCreate_ShaderResource | TexCreate_UAV, Faces.Num());
+        FRDGTextureDesc ArrayDesc = FRDGTextureDesc::Create2DArray(FIntPoint(FaceResolution, FaceResolution), PixelFormat, FClearValueBinding::Transparent, TexCreate_ShaderResource | TexCreate_UAV, Faces.Num());
         FRDGTextureRef ArrayTexture = GraphBuilder.CreateTexture(ArrayDesc, DebugName);
 
         for (int32 Index = 0; Index < Faces.Num(); ++Index)
@@ -525,8 +605,18 @@ namespace
         FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
         FRDGBuilder GraphBuilder(RHICmdList);
 
-        FRDGTextureRef LeftArray = BuildFaceArray(GraphBuilder, LeftFaces, FaceResolution, TEXT("OmniLeftFaces"));
-        FRDGTextureRef RightArray = bStereo ? BuildFaceArray(GraphBuilder, RightFaces, FaceResolution, TEXT("OmniRightFaces")) : LeftArray;
+        EOmniCapturePixelPrecision Precision = ResolvePrecisionFromTextures(LeftFaces);
+        if (Precision == EOmniCapturePixelPrecision::Unknown)
+        {
+            Precision = Settings.HDRPrecision == EOmniCaptureHDRPrecision::FullFloat
+                ? EOmniCapturePixelPrecision::FullFloat
+                : EOmniCapturePixelPrecision::HalfFloat;
+        }
+
+        const EPixelFormat FacePixelFormat = GetPixelFormatForPrecision(Precision);
+
+        FRDGTextureRef LeftArray = BuildFaceArray(GraphBuilder, LeftFaces, FaceResolution, FacePixelFormat, TEXT("OmniLeftFaces"));
+        FRDGTextureRef RightArray = bStereo ? BuildFaceArray(GraphBuilder, RightFaces, FaceResolution, FacePixelFormat, TEXT("OmniRightFaces")) : LeftArray;
 
         if (!LeftArray)
         {
@@ -534,7 +624,7 @@ namespace
             return;
         }
 
-        FRDGTextureDesc OutputDesc = FRDGTextureDesc::Create2D(FIntPoint(OutputWidth, OutputHeight), PF_FloatRGBA, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable);
+        FRDGTextureDesc OutputDesc = FRDGTextureDesc::Create2D(FIntPoint(OutputWidth, OutputHeight), FacePixelFormat, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable);
         FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("OmniEquirectOutput"));
 
         FOmniEquirectCS::FParameters* Parameters = GraphBuilder.AllocParameters<FOmniEquirectCS::FParameters>();
@@ -653,7 +743,7 @@ namespace
         }
 
         const uint32 PixelCount = OutputWidth * OutputHeight;
-        const uint32 BytesPerPixel = sizeof(FFloat16Color);
+        const uint32 BytesPerPixel = Precision == EOmniCapturePixelPrecision::FullFloat ? sizeof(FLinearColor) : sizeof(FFloat16Color);
         int32 RowPitchInPixels = 0;
         const uint8* RawData = static_cast<const uint8*>(Readback.Lock(RowPitchInPixels));
 
@@ -662,28 +752,56 @@ namespace
             const uint32 RowPitch = RowPitchInPixels > 0 ? static_cast<uint32>(RowPitchInPixels) : static_cast<uint32>(OutputWidth);
             if (bUseLinear)
             {
-                TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(FIntPoint(OutputWidth, OutputHeight));
-                PixelData->Pixels.SetNum(PixelCount);
-
-                FFloat16Color* DestData = PixelData->Pixels.GetData();
-                const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
-                for (int32 Row = 0; Row < OutputHeight; ++Row)
+                if (Precision == EOmniCapturePixelPrecision::FullFloat)
                 {
-                    const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
-                    FMemory::Memcpy(DestData + Row * OutputWidth, SourceRow, OutputWidth * BytesPerPixel);
-                }
+                    TUniquePtr<TImagePixelData<FLinearColor>> PixelData = MakeUnique<TImagePixelData<FLinearColor>>(FIntPoint(OutputWidth, OutputHeight));
+                    PixelData->Pixels.SetNum(PixelCount);
 
-                OutResult.PixelData = MoveTemp(PixelData);
-
-                OutResult.PreviewPixels.SetNum(PixelCount);
-                const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(OutResult.PixelData.Get());
-                if (FloatData)
-                {
-                    for (uint32 Index = 0; Index < PixelCount; ++Index)
+                    FLinearColor* DestData = PixelData->Pixels.GetData();
+                    const FLinearColor* SourcePixels = reinterpret_cast<const FLinearColor*>(RawData);
+                    for (int32 Row = 0; Row < OutputHeight; ++Row)
                     {
-                        const FFloat16Color& Source = FloatData->Pixels[Index];
-                        const FLinearColor Linear(Source.R.GetFloat(), Source.G.GetFloat(), Source.B.GetFloat(), Source.A.GetFloat());
-                        OutResult.PreviewPixels[Index] = Linear.ToFColor(true);
+                        const FLinearColor* SourceRow = SourcePixels + RowPitch * Row;
+                        FMemory::Memcpy(DestData + Row * OutputWidth, SourceRow, OutputWidth * BytesPerPixel);
+                    }
+
+                    OutResult.PixelData = MoveTemp(PixelData);
+
+                    OutResult.PreviewPixels.SetNum(PixelCount);
+                    const TImagePixelData<FLinearColor>* FloatData = static_cast<const TImagePixelData<FLinearColor>*>(OutResult.PixelData.Get());
+                    if (FloatData)
+                    {
+                        for (uint32 Index = 0; Index < PixelCount; ++Index)
+                        {
+                            OutResult.PreviewPixels[Index] = FloatData->Pixels[Index].ToFColor(true);
+                        }
+                    }
+                }
+                else
+                {
+                    TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(FIntPoint(OutputWidth, OutputHeight));
+                    PixelData->Pixels.SetNum(PixelCount);
+
+                    FFloat16Color* DestData = PixelData->Pixels.GetData();
+                    const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
+                    for (int32 Row = 0; Row < OutputHeight; ++Row)
+                    {
+                        const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
+                        FMemory::Memcpy(DestData + Row * OutputWidth, SourceRow, OutputWidth * BytesPerPixel);
+                    }
+
+                    OutResult.PixelData = MoveTemp(PixelData);
+
+                    OutResult.PreviewPixels.SetNum(PixelCount);
+                    const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(OutResult.PixelData.Get());
+                    if (FloatData)
+                    {
+                        for (uint32 Index = 0; Index < PixelCount; ++Index)
+                        {
+                            const FFloat16Color& Source = FloatData->Pixels[Index];
+                            const FLinearColor Linear(Source.R.GetFloat(), Source.G.GetFloat(), Source.B.GetFloat(), Source.A.GetFloat());
+                            OutResult.PreviewPixels[Index] = Linear.ToFColor(true);
+                        }
                     }
                 }
             }
@@ -693,15 +811,24 @@ namespace
                 PixelData->Pixels.SetNum(PixelCount);
                 OutResult.PreviewPixels.SetNum(PixelCount);
 
-                const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
+                const uint8* SourcePixels = RawData;
                 for (int32 Row = 0; Row < OutputHeight; ++Row)
                 {
-                    const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
+                    const uint8* SourceRow = SourcePixels + (RowPitch * Row * BytesPerPixel);
                     FColor* DestRow = PixelData->Pixels.GetData() + Row * OutputWidth;
                     for (int32 Column = 0; Column < OutputWidth; ++Column)
                     {
-                        const FFloat16Color& Pixel = SourceRow[Column];
-                        const FLinearColor Linear(Pixel.R.GetFloat(), Pixel.G.GetFloat(), Pixel.B.GetFloat(), Pixel.A.GetFloat());
+                        FLinearColor Linear;
+                        if (Precision == EOmniCapturePixelPrecision::FullFloat)
+                        {
+                            const FLinearColor* Pixel = reinterpret_cast<const FLinearColor*>(SourceRow) + Column;
+                            Linear = *Pixel;
+                        }
+                        else
+                        {
+                            const FFloat16Color* Pixel = reinterpret_cast<const FFloat16Color*>(SourceRow) + Column;
+                            Linear = FLinearColor(Pixel->R.GetFloat(), Pixel->G.GetFloat(), Pixel->B.GetFloat(), Pixel->A.GetFloat());
+                        }
                         const FColor SRGB = Linear.ToFColor(true);
                         DestRow[Column] = SRGB;
                         OutResult.PreviewPixels[Row * OutputWidth + Column] = SRGB;
@@ -713,6 +840,7 @@ namespace
         }
 
         Readback.Unlock();
+        OutResult.PixelPrecision = Precision;
     }
 
     void ConvertFisheyeOnRenderThread(const FOmniCaptureSettings Settings, const TArray<FTextureRHIRef, TInlineAllocator<6>> LeftFaces, const TArray<FTextureRHIRef, TInlineAllocator<6>> RightFaces, FOmniCaptureEquirectResult& OutResult)
@@ -728,8 +856,18 @@ namespace
         FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
         FRDGBuilder GraphBuilder(RHICmdList);
 
-        FRDGTextureRef LeftArray = BuildFaceArray(GraphBuilder, LeftFaces, FaceResolution, TEXT("OmniFisheyeLeftFaces"));
-        FRDGTextureRef RightArray = bStereo ? BuildFaceArray(GraphBuilder, RightFaces, FaceResolution, TEXT("OmniFisheyeRightFaces")) : LeftArray;
+        EOmniCapturePixelPrecision Precision = ResolvePrecisionFromTextures(LeftFaces);
+        if (Precision == EOmniCapturePixelPrecision::Unknown)
+        {
+            Precision = Settings.HDRPrecision == EOmniCaptureHDRPrecision::FullFloat
+                ? EOmniCapturePixelPrecision::FullFloat
+                : EOmniCapturePixelPrecision::HalfFloat;
+        }
+
+        const EPixelFormat FacePixelFormat = GetPixelFormatForPrecision(Precision);
+
+        FRDGTextureRef LeftArray = BuildFaceArray(GraphBuilder, LeftFaces, FaceResolution, FacePixelFormat, TEXT("OmniFisheyeLeftFaces"));
+        FRDGTextureRef RightArray = bStereo ? BuildFaceArray(GraphBuilder, RightFaces, FaceResolution, FacePixelFormat, TEXT("OmniFisheyeRightFaces")) : LeftArray;
 
         if (!LeftArray)
         {
@@ -737,7 +875,7 @@ namespace
             return;
         }
 
-        FRDGTextureDesc OutputDesc = FRDGTextureDesc::Create2D(OutputSize, PF_FloatRGBA, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable);
+        FRDGTextureDesc OutputDesc = FRDGTextureDesc::Create2D(OutputSize, FacePixelFormat, FClearValueBinding::Black, TexCreate_ShaderResource | TexCreate_UAV | TexCreate_RenderTargetable);
         FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputDesc, TEXT("OmniFisheyeOutput"));
 
         FOmniFisheyeCS::FParameters* Parameters = GraphBuilder.AllocParameters<FOmniFisheyeCS::FParameters>();
@@ -872,7 +1010,7 @@ namespace
         }
 
         const uint32 PixelCount = OutputSize.X * OutputSize.Y;
-        const uint32 BytesPerPixel = sizeof(FFloat16Color);
+        const uint32 BytesPerPixel = Precision == EOmniCapturePixelPrecision::FullFloat ? sizeof(FLinearColor) : sizeof(FFloat16Color);
         int32 RowPitchInPixels = 0;
         const uint8* RawData = static_cast<const uint8*>(Readback.Lock(RowPitchInPixels));
 
@@ -881,28 +1019,56 @@ namespace
             const uint32 RowPitch = RowPitchInPixels > 0 ? static_cast<uint32>(RowPitchInPixels) : static_cast<uint32>(OutputSize.X);
             if (bUseLinear)
             {
-                TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutputSize);
-                PixelData->Pixels.SetNum(PixelCount);
-
-                FFloat16Color* DestData = PixelData->Pixels.GetData();
-                const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
-                for (int32 Row = 0; Row < OutputSize.Y; ++Row)
+                if (Precision == EOmniCapturePixelPrecision::FullFloat)
                 {
-                    const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
-                    FMemory::Memcpy(DestData + Row * OutputSize.X, SourceRow, OutputSize.X * BytesPerPixel);
-                }
+                    TUniquePtr<TImagePixelData<FLinearColor>> PixelData = MakeUnique<TImagePixelData<FLinearColor>>(OutputSize);
+                    PixelData->Pixels.SetNum(PixelCount);
 
-                OutResult.PixelData = MoveTemp(PixelData);
-
-                OutResult.PreviewPixels.SetNum(PixelCount);
-                const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(OutResult.PixelData.Get());
-                if (FloatData)
-                {
-                    for (uint32 Index = 0; Index < PixelCount; ++Index)
+                    FLinearColor* DestData = PixelData->Pixels.GetData();
+                    const FLinearColor* SourcePixels = reinterpret_cast<const FLinearColor*>(RawData);
+                    for (int32 Row = 0; Row < OutputSize.Y; ++Row)
                     {
-                        const FFloat16Color& Source = FloatData->Pixels[Index];
-                        const FLinearColor Linear(Source.R.GetFloat(), Source.G.GetFloat(), Source.B.GetFloat(), Source.A.GetFloat());
-                        OutResult.PreviewPixels[Index] = Linear.ToFColor(true);
+                        const FLinearColor* SourceRow = SourcePixels + RowPitch * Row;
+                        FMemory::Memcpy(DestData + Row * OutputSize.X, SourceRow, OutputSize.X * BytesPerPixel);
+                    }
+
+                    OutResult.PixelData = MoveTemp(PixelData);
+
+                    OutResult.PreviewPixels.SetNum(PixelCount);
+                    const TImagePixelData<FLinearColor>* FloatData = static_cast<const TImagePixelData<FLinearColor>*>(OutResult.PixelData.Get());
+                    if (FloatData)
+                    {
+                        for (uint32 Index = 0; Index < PixelCount; ++Index)
+                        {
+                            OutResult.PreviewPixels[Index] = FloatData->Pixels[Index].ToFColor(true);
+                        }
+                    }
+                }
+                else
+                {
+                    TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutputSize);
+                    PixelData->Pixels.SetNum(PixelCount);
+
+                    FFloat16Color* DestData = PixelData->Pixels.GetData();
+                    const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
+                    for (int32 Row = 0; Row < OutputSize.Y; ++Row)
+                    {
+                        const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
+                        FMemory::Memcpy(DestData + Row * OutputSize.X, SourceRow, OutputSize.X * BytesPerPixel);
+                    }
+
+                    OutResult.PixelData = MoveTemp(PixelData);
+
+                    OutResult.PreviewPixels.SetNum(PixelCount);
+                    const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(OutResult.PixelData.Get());
+                    if (FloatData)
+                    {
+                        for (uint32 Index = 0; Index < PixelCount; ++Index)
+                        {
+                            const FFloat16Color& Source = FloatData->Pixels[Index];
+                            const FLinearColor Linear(Source.R.GetFloat(), Source.G.GetFloat(), Source.B.GetFloat(), Source.A.GetFloat());
+                            OutResult.PreviewPixels[Index] = Linear.ToFColor(true);
+                        }
                     }
                 }
             }
@@ -912,15 +1078,24 @@ namespace
                 PixelData->Pixels.SetNum(PixelCount);
                 OutResult.PreviewPixels.SetNum(PixelCount);
 
-                const FFloat16Color* SourcePixels = reinterpret_cast<const FFloat16Color*>(RawData);
+                const uint8* SourcePixels = RawData;
                 for (int32 Row = 0; Row < OutputSize.Y; ++Row)
                 {
-                    const FFloat16Color* SourceRow = SourcePixels + RowPitch * Row;
+                    const uint8* SourceRow = SourcePixels + (RowPitch * Row * BytesPerPixel);
                     FColor* DestRow = PixelData->Pixels.GetData() + Row * OutputSize.X;
                     for (int32 Column = 0; Column < OutputSize.X; ++Column)
                     {
-                        const FFloat16Color& Pixel = SourceRow[Column];
-                        const FLinearColor Linear(Pixel.R.GetFloat(), Pixel.G.GetFloat(), Pixel.B.GetFloat(), Pixel.A.GetFloat());
+                        FLinearColor Linear;
+                        if (Precision == EOmniCapturePixelPrecision::FullFloat)
+                        {
+                            const FLinearColor* Pixel = reinterpret_cast<const FLinearColor*>(SourceRow) + Column;
+                            Linear = *Pixel;
+                        }
+                        else
+                        {
+                            const FFloat16Color* Pixel = reinterpret_cast<const FFloat16Color*>(SourceRow) + Column;
+                            Linear = FLinearColor(Pixel->R.GetFloat(), Pixel->G.GetFloat(), Pixel->B.GetFloat(), Pixel->A.GetFloat());
+                        }
                         const FColor SRGB = Linear.ToFColor(true);
                         DestRow[Column] = SRGB;
                         OutResult.PreviewPixels[Row * OutputSize.X + Column] = SRGB;
@@ -932,6 +1107,7 @@ namespace
         }
 
         Readback.Unlock();
+        OutResult.PixelPrecision = Precision;
     }
 }
 
@@ -947,6 +1123,14 @@ namespace
 
         FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
         FRDGBuilder GraphBuilder(RHICmdList);
+
+        EOmniCapturePixelPrecision Precision = PixelPrecisionFromFormat(SourceTexture->GetFormat());
+        if (Precision == EOmniCapturePixelPrecision::Unknown)
+        {
+            Precision = Settings.HDRPrecision == EOmniCaptureHDRPrecision::FullFloat
+                ? EOmniCapturePixelPrecision::FullFloat
+                : EOmniCapturePixelPrecision::HalfFloat;
+        }
 
         FRDGTextureRef Source = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(SourceTexture, TEXT("OmniPlanarSource")));
 
@@ -995,6 +1179,7 @@ namespace
         OutResult.bUsedCPUFallback = false;
         OutResult.EncoderPlanes.Reset();
         OutResult.ReadyFence.SafeRelease();
+        OutResult.PixelPrecision = Precision;
 
         if (Settings.OutputFormat == EOmniOutputFormat::NVENCHardware)
         {
@@ -1072,6 +1257,7 @@ namespace
 
         const int32 PixelCount = OutputWidth * OutputHeight;
         OutResult.PreviewPixels.SetNum(PixelCount);
+        OutResult.PixelPrecision = LeftCubemap.Precision;
 
         auto ProcessPixel = [&](auto& PixelArray, auto ConvertColor)
         {
@@ -1128,10 +1314,21 @@ namespace
 
         if (OutResult.bIsLinear)
         {
-            TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutResult.Size);
-            PixelData->Pixels.SetNum(PixelCount);
-            ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return FFloat16Color(Linear); });
-            OutResult.PixelData = MoveTemp(PixelData);
+            if (OutResult.PixelPrecision == EOmniCapturePixelPrecision::FullFloat)
+            {
+                TUniquePtr<TImagePixelData<FLinearColor>> PixelData = MakeUnique<TImagePixelData<FLinearColor>>(OutResult.Size);
+                PixelData->Pixels.SetNum(PixelCount);
+                ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return Linear; });
+                OutResult.PixelData = MoveTemp(PixelData);
+            }
+            else
+            {
+                OutResult.PixelPrecision = EOmniCapturePixelPrecision::HalfFloat;
+                TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutResult.Size);
+                PixelData->Pixels.SetNum(PixelCount);
+                ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return FFloat16Color(Linear); });
+                OutResult.PixelData = MoveTemp(PixelData);
+            }
         }
         else
         {
@@ -1177,6 +1374,7 @@ namespace
 
         const int32 PixelCount = OutputSize.X * OutputSize.Y;
         OutResult.PreviewPixels.SetNum(PixelCount);
+        OutResult.PixelPrecision = LeftCubemap.Precision;
 
         auto ProcessPixel = [&](auto& PixelArray, auto ConvertColor)
         {
@@ -1238,10 +1436,21 @@ namespace
 
         if (OutResult.bIsLinear)
         {
-            TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutputSize);
-            PixelData->Pixels.SetNum(PixelCount);
-            ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return FFloat16Color(Linear); });
-            OutResult.PixelData = MoveTemp(PixelData);
+            if (OutResult.PixelPrecision == EOmniCapturePixelPrecision::FullFloat)
+            {
+                TUniquePtr<TImagePixelData<FLinearColor>> PixelData = MakeUnique<TImagePixelData<FLinearColor>>(OutputSize);
+                PixelData->Pixels.SetNum(PixelCount);
+                ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return Linear; });
+                OutResult.PixelData = MoveTemp(PixelData);
+            }
+            else
+            {
+                OutResult.PixelPrecision = EOmniCapturePixelPrecision::HalfFloat;
+                TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(OutputSize);
+                PixelData->Pixels.SetNum(PixelCount);
+                ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return FFloat16Color(Linear); });
+                OutResult.PixelData = MoveTemp(PixelData);
+            }
         }
         else
         {

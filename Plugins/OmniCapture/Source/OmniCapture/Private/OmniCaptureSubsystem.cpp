@@ -1294,6 +1294,7 @@ void UOmniCaptureSubsystem::CaptureFrame()
     Frame->ReadyFence = ConversionResult.ReadyFence;
     Frame->bLinearColor = ConversionResult.bIsLinear;
     Frame->bUsedCPUFallback = ConversionResult.bUsedCPUFallback;
+    Frame->PixelPrecision = ConversionResult.PixelPrecision;
     Frame->EncoderTextures.Reset();
     for (const TRefCountPtr<IPooledRenderTarget>& Plane : ConversionResult.EncoderPlanes)
     {

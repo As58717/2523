@@ -16,6 +16,7 @@ struct FOmniCaptureEquirectResult
     FIntPoint Size = FIntPoint::ZeroValue;
     bool bIsLinear = false;
     bool bUsedCPUFallback = false;
+    EOmniCapturePixelPrecision PixelPrecision = EOmniCapturePixelPrecision::Unknown;
     TRefCountPtr<IPooledRenderTarget> OutputTarget;
     TRefCountPtr<IPooledRenderTarget> GPUSource;
     FTextureRHIRef Texture;

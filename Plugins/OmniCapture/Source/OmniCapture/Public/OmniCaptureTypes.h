@@ -48,6 +48,19 @@ enum class EOmniOutputFormat : uint8
 
 UENUM(BlueprintType)
 enum class EOmniCaptureImageFormat : uint8 { PNG, JPG, EXR, BMP };
+UENUM(BlueprintType)
+enum class EOmniCaptureHDRPrecision : uint8
+{
+    HalfFloat UMETA(DisplayName = "16-bit Half Float"),
+    FullFloat UMETA(DisplayName = "32-bit Float")
+};
+
+enum class EOmniCapturePixelPrecision : uint8
+{
+    Unknown,
+    HalfFloat,
+    FullFloat
+};
 
 UENUM(BlueprintType)
 enum class EOmniCaptureGamma : uint8 { SRGB, Linear };
@@ -168,6 +181,7 @@ struct OMNICAPTURE_API FOmniCaptureSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture") bool bCreateSegmentSubfolders = true;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniOutputFormat OutputFormat = EOmniOutputFormat::ImageSequence;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniCaptureImageFormat ImageFormat = EOmniCaptureImageFormat::PNG;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniCaptureHDRPrecision HDRPrecision = EOmniCaptureHDRPrecision::HalfFloat;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniCapturePNGBitDepth PNGBitDepth = EOmniCapturePNGBitDepth::BitDepth32;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") FString OutputDirectory;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") FString OutputFileName = TEXT("OmniCapture");
@@ -241,15 +255,16 @@ struct FOmniCaptureFrameMetadata
 
 struct FOmniCaptureFrame
 {
-	FOmniCaptureFrameMetadata Metadata;
-	TUniquePtr<FImagePixelData> PixelData;
-	TRefCountPtr<IPooledRenderTarget> GPUSource;
-	FTextureRHIRef Texture;
-	FGPUFenceRHIRef ReadyFence;
-	bool bLinearColor = false;
-	bool bUsedCPUFallback = false;
-	TArray<FOmniAudioPacket> AudioPackets;
-	TArray<FTextureRHIRef> EncoderTextures;
+        FOmniCaptureFrameMetadata Metadata;
+        TUniquePtr<FImagePixelData> PixelData;
+        TRefCountPtr<IPooledRenderTarget> GPUSource;
+        FTextureRHIRef Texture;
+        FGPUFenceRHIRef ReadyFence;
+        bool bLinearColor = false;
+        bool bUsedCPUFallback = false;
+        EOmniCapturePixelPrecision PixelPrecision = EOmniCapturePixelPrecision::Unknown;
+        TArray<FOmniAudioPacket> AudioPackets;
+        TArray<FTextureRHIRef> EncoderTextures;
 };
 
 USTRUCT(BlueprintType)
