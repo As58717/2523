@@ -2,9 +2,12 @@
 
 
 #include "Async/Async.h"
+#include "Async/Promise.h"
 #include "HAL/FileManager.h"
 #include "IImageWrapperModule.h"
 #include "IImageWrapper.h"
+#include "ImageWriteQueue.h"
+#include "ImageWriteTypes.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
@@ -148,9 +151,11 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
         return;
     }
 
-    TFuture<bool> Future = Async(EAsyncExecution::ThreadPool, [this, FilePath = MoveTemp(TargetPath), Format = TargetFormat, bIsLinear, PixelData = MoveTemp(PixelData)]() mutable
+    const EOmniCapturePixelPrecision PixelPrecision = Frame->PixelPrecision;
+
+    TFuture<bool> Future = Async(EAsyncExecution::ThreadPool, [this, FilePath = MoveTemp(TargetPath), Format = TargetFormat, bIsLinear, PixelPrecision, PixelData = MoveTemp(PixelData)]() mutable
     {
-        return WritePixelDataToDisk(MoveTemp(PixelData), FilePath, Format, bIsLinear);
+        return WritePixelDataToDisk(MoveTemp(PixelData), FilePath, Format, bIsLinear, PixelPrecision);
     });
 
     TrackPendingTask(MoveTemp(Future));
@@ -177,7 +182,7 @@ TArray<FOmniCaptureFrameMetadata> FOmniCaptureImageWriter::ConsumeCapturedFrames
     return Result;
 }
 
-bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear) const
+bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear, EOmniCapturePixelPrecision PixelPrecision) const
 {
     if (!PixelData.IsValid())
     {
@@ -203,8 +208,7 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
     case EOmniCaptureImageFormat::EXR:
         if (bIsLinear)
         {
-            const TImagePixelData<FFloat16Color>* LinearData = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
-            bWriteSuccessful = WriteEXR(*LinearData, FilePath);
+            bWriteSuccessful = WriteEXR(MoveTemp(PixelData), FilePath, PixelPrecision);
         }
         else
         {
@@ -649,34 +653,34 @@ bool FOmniCaptureImageWriter::WriteJPEGFromLinear(const TImagePixelData<FFloat16
     return WriteJPEG(*TempData, FilePath);
 }
 
-bool FOmniCaptureImageWriter::WriteEXR(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const
+bool FOmniCaptureImageWriter::WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const
 {
-    const TSharedPtr<IImageWrapper> ImageWrapper = CreateImageWrapper(EImageFormat::EXR);
-    if (!ImageWrapper.IsValid())
+    if (!PixelData.IsValid())
     {
         return false;
     }
 
-    const FIntPoint Size = PixelData.GetSize();
-    const TArray64<FFloat16Color>& Pixels = PixelData.Pixels;
-    if (Pixels.Num() != Size.X * Size.Y)
+    EOmniCapturePixelPrecision EffectivePrecision = PixelPrecision;
+    if (EffectivePrecision == EOmniCapturePixelPrecision::Unknown)
     {
-        return false;
+        EffectivePrecision = EOmniCapturePixelPrecision::HalfFloat;
     }
 
-    if (!ImageWrapper->SetRaw(reinterpret_cast<const uint8*>(Pixels.GetData()), Pixels.Num() * sizeof(FFloat16Color), Size.X, Size.Y, ERGBFormat::RGBA, 16))
+    EImagePixelType PixelType = EImagePixelType::Float16;
+    switch (EffectivePrecision)
     {
-        return false;
-    }
-
-    const TArray64<uint8> CompressedData = ImageWrapper->GetCompressed(0);
-    if (CompressedData.Num() == 0)
-    {
+    case EOmniCapturePixelPrecision::FullFloat:
+        PixelType = EImagePixelType::Float32;
+        break;
+    case EOmniCapturePixelPrecision::HalfFloat:
+        PixelType = EImagePixelType::Float16;
+        break;
+    default:
         return false;
     }
 
     IFileManager::Get().Delete(*FilePath, false, true, false);
-    return FFileHelper::SaveArrayToFile(CompressedData, *FilePath);
+    return WriteEXRInternal(MoveTemp(PixelData), FilePath, PixelType);
 }
 
 bool FOmniCaptureImageWriter::WriteEXRFromColor(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const
@@ -697,7 +701,36 @@ bool FOmniCaptureImageWriter::WriteEXRFromColor(const TImagePixelData<FColor>& P
 
     TUniquePtr<TImagePixelData<FFloat16Color>> TempData = MakeUnique<TImagePixelData<FFloat16Color>>(Size);
     TempData->Pixels = MoveTemp(Converted);
-    return WriteEXR(*TempData, FilePath);
+    return WriteEXR(MoveTemp(TempData), FilePath, EOmniCapturePixelPrecision::HalfFloat);
+}
+
+bool FOmniCaptureImageWriter::WriteEXRInternal(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EImagePixelType PixelType) const
+{
+    if (!PixelData.IsValid())
+    {
+        return false;
+    }
+
+    IImageWriteQueueModule& ImageWriteModule = FModuleManager::LoadModuleChecked<IImageWriteQueueModule>(TEXT("ImageWriteQueue"));
+    IImageWriteQueue& WriteQueue = ImageWriteModule.GetWriteQueue();
+
+    TPromise<bool> CompletionPromise;
+    TFuture<bool> CompletionFuture = CompletionPromise.GetFuture();
+
+    TUniquePtr<FImageWriteTask> Task = WriteQueue.CreateTask(EImageWriteTaskType::HighPriority);
+    Task->Format = EImageFormat::EXR;
+    Task->Filename = FilePath;
+    Task->PixelData = MoveTemp(PixelData);
+    Task->PixelType = PixelType;
+    Task->CompressionQuality = static_cast<int32>(EImageCompressionQuality::Default);
+    Task->bOverwriteFile = true;
+    Task->OnCompleted = FOnImageWriteTaskCompleted::CreateLambda([Promise = MoveTemp(CompletionPromise)](bool bSuccess) mutable
+    {
+        Promise.SetValue(bSuccess);
+    });
+
+    WriteQueue.Enqueue(MoveTemp(Task));
+    return CompletionFuture.Get();
 }
 
 void FOmniCaptureImageWriter::TrackPendingTask(TFuture<bool>&& TaskFuture)

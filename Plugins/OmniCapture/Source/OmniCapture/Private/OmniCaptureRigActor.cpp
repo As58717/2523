@@ -196,7 +196,9 @@ void AOmniCaptureRigActor::ConfigureCaptureComponent(USceneCaptureComponent2D* C
     check(RenderTarget);
 
     // 设置渲染目标
-    const EPixelFormat PixelFormat = PF_FloatRGBA;
+    const EPixelFormat PixelFormat = CachedSettings.HDRPrecision == EOmniCaptureHDRPrecision::FullFloat
+        ? PF_A32B32G32R32F
+        : PF_FloatRGBA;
     const int32 SizeX = FMath::Max(2, TargetSize.X);
     const int32 SizeY = FMath::Max(2, TargetSize.Y);
     RenderTarget->InitCustomFormat(SizeX, SizeY, PixelFormat, false);

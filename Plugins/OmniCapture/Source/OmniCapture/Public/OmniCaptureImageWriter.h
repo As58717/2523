@@ -4,6 +4,7 @@
 #include "OmniCaptureTypes.h"
 #include "Async/Future.h"
 #include "Templates/Function.h"
+#include "ImageWriteTypes.h"
 
 class OMNICAPTURE_API FOmniCaptureImageWriter
 {
@@ -18,7 +19,7 @@ public:
     TArray<FOmniCaptureFrameMetadata> ConsumeCapturedFrames();
 
 private:
-    bool WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear) const;
+    bool WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear, EOmniCapturePixelPrecision PixelPrecision) const;
     bool WritePNGRaw(const FString& FilePath, const FIntPoint& Size, const void* RawData, int64 RawSizeInBytes, ERGBFormat Format, int32 BitDepth) const;
     bool WritePNGWithRowSource(const FString& FilePath, const FIntPoint& Size, ERGBFormat Format, int32 BitDepth, TFunctionRef<void(int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)> PrepareRows) const;
     bool WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
@@ -27,8 +28,9 @@ private:
     bool WriteBMPFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
     bool WriteJPEG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WriteJPEGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
-    bool WriteEXR(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
+    bool WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const;
     bool WriteEXRFromColor(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
+    bool WriteEXRInternal(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EImagePixelType PixelType) const;
     void TrackPendingTask(TFuture<bool>&& TaskFuture);
     void PruneCompletedTasks();
     void EnforcePendingTaskLimit();
