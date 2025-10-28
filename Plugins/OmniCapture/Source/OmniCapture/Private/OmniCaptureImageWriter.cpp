@@ -119,7 +119,10 @@ namespace
     }
 }
 
-FOmniCaptureImageWriter::FOmniCaptureImageWriter() {}
+FOmniCaptureImageWriter::FOmniCaptureImageWriter()
+{
+    bStopRequested.Store(false);
+}
 FOmniCaptureImageWriter::~FOmniCaptureImageWriter() { Flush(); }
 
 void FOmniCaptureImageWriter::Initialize(const FOmniCaptureSettings& Settings, const FString& InOutputDirectory)
@@ -131,12 +134,21 @@ void FOmniCaptureImageWriter::Initialize(const FOmniCaptureSettings& Settings, c
     TargetFormat = Settings.ImageFormat;
     TargetPNGBitDepth = Settings.PNGBitDepth;
     MaxPendingTasks = FMath::Max(1, Settings.MaxPendingImageTasks);
+    bStopRequested.Store(false);
     bInitialized = true;
 }
 
 void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame, const FString& FrameFileName)
 {
-    if (!bInitialized || !Frame.IsValid())
+    if (!bInitialized || !Frame.IsValid() || IsStopRequested())
+    {
+        return;
+    }
+
+    PruneCompletedTasks();
+    WaitForAvailableTaskSlot();
+
+    if (IsStopRequested())
     {
         return;
     }
@@ -170,6 +182,8 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
 
 void FOmniCaptureImageWriter::Flush()
 {
+    RequestStop();
+    PruneCompletedTasks();
     WaitForAllTasks();
     bInitialized = false;
 }
@@ -185,6 +199,11 @@ TArray<FOmniCaptureFrameMetadata> FOmniCaptureImageWriter::ConsumeCapturedFrames
 bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear, EOmniCapturePixelPrecision PixelPrecision) const
 {
     if (!PixelData.IsValid())
+    {
+        return false;
+    }
+
+    if (IsStopRequested())
     {
         return false;
     }
@@ -259,6 +278,11 @@ bool FOmniCaptureImageWriter::WritePNGRaw(const FString& FilePath, const FIntPoi
         return false;
     }
 
+    if (IsStopRequested())
+    {
+        return false;
+    }
+
     const int32 BytesPerChannel = BitDepth / 8;
     if (BytesPerChannel <= 0)
     {
@@ -326,6 +350,11 @@ bool FOmniCaptureImageWriter::WritePNGWithRowSource(const FString& FilePath, con
         return false;
     }
 
+    if (IsStopRequested())
+    {
+        return false;
+    }
+
     IFileManager::Get().Delete(*FilePath, false, true, false);
     TUniquePtr<FArchive> Archive(IFileManager::Get().CreateFileWriter(*FilePath));
     if (!Archive.IsValid())
@@ -382,6 +411,14 @@ bool FOmniCaptureImageWriter::WritePNGWithRowSource(const FString& FilePath, con
     int32 RowIndex = 0;
     while (RowIndex < Size.Y)
     {
+        if (IsStopRequested())
+        {
+            png_destroy_write_struct(&PngPtr, &InfoPtr);
+            Archive->Close();
+            IFileManager::Get().Delete(*FilePath, false, true, true);
+            return false;
+        }
+
         const int32 RowsThisPass = FMath::Min(MaxRowsPerChunk, Size.Y - RowIndex);
         RowPointers.SetNum(RowsThisPass, EAllowShrinking::No);
         PrepareRows(RowIndex, RowsThisPass, BytesPerRow, TempBuffer, RowPointers);
@@ -404,6 +441,11 @@ bool FOmniCaptureImageWriter::WritePNG(const TImagePixelData<FColor>& PixelData,
     const FIntPoint Size = PixelData.GetSize();
     const TArray64<FColor>& Pixels = PixelData.Pixels;
     if (Pixels.Num() != Size.X * Size.Y)
+    {
+        return false;
+    }
+
+    if (IsStopRequested())
     {
         return false;
     }
@@ -466,6 +508,11 @@ bool FOmniCaptureImageWriter::WriteBMP(const TImagePixelData<FColor>& PixelData,
         return false;
     }
 
+    if (IsStopRequested())
+    {
+        return false;
+    }
+
     const FIntPoint Size = PixelData.GetSize();
     const TArray64<FColor>& Pixels = PixelData.Pixels;
     if (Pixels.Num() != Size.X * Size.Y)
@@ -493,6 +540,11 @@ bool FOmniCaptureImageWriter::WritePNGFromLinear(const TImagePixelData<FFloat16C
     const FIntPoint Size = PixelData.GetSize();
     const int32 ExpectedCount = Size.X * Size.Y;
     if (PixelData.Pixels.Num() != ExpectedCount)
+    {
+        return false;
+    }
+
+    if (IsStopRequested())
     {
         return false;
     }
@@ -578,6 +630,11 @@ bool FOmniCaptureImageWriter::WriteBMPFromLinear(const TImagePixelData<FFloat16C
         return false;
     }
 
+    if (IsStopRequested())
+    {
+        return false;
+    }
+
     TArray<FColor> Converted;
     Converted.SetNum(ExpectedCount);
     for (int32 Index = 0; Index < ExpectedCount; ++Index)
@@ -600,6 +657,11 @@ bool FOmniCaptureImageWriter::WriteJPEG(const TImagePixelData<FColor>& PixelData
 {
     const TSharedPtr<IImageWrapper> ImageWrapper = CreateImageWrapper(EImageFormat::JPEG);
     if (!ImageWrapper.IsValid())
+    {
+        return false;
+    }
+
+    if (IsStopRequested())
     {
         return false;
     }
@@ -635,6 +697,11 @@ bool FOmniCaptureImageWriter::WriteJPEGFromLinear(const TImagePixelData<FFloat16
         return false;
     }
 
+    if (IsStopRequested())
+    {
+        return false;
+    }
+
     TArray<FColor> Converted;
     Converted.SetNum(ExpectedCount);
     for (int32 Index = 0; Index < ExpectedCount; ++Index)
@@ -656,6 +723,11 @@ bool FOmniCaptureImageWriter::WriteJPEGFromLinear(const TImagePixelData<FFloat16
 bool FOmniCaptureImageWriter::WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const
 {
     if (!PixelData.IsValid())
+    {
+        return false;
+    }
+
+    if (IsStopRequested())
     {
         return false;
     }
@@ -692,6 +764,11 @@ bool FOmniCaptureImageWriter::WriteEXRFromColor(const TImagePixelData<FColor>& P
         return false;
     }
 
+    if (IsStopRequested())
+    {
+        return false;
+    }
+
     TArray<FFloat16Color> Converted;
     Converted.SetNum(ExpectedCount);
     for (int32 Index = 0; Index < ExpectedCount; ++Index)
@@ -707,6 +784,11 @@ bool FOmniCaptureImageWriter::WriteEXRFromColor(const TImagePixelData<FColor>& P
 bool FOmniCaptureImageWriter::WriteEXRInternal(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EImagePixelType PixelType) const
 {
     if (!PixelData.IsValid())
+    {
+        return false;
+    }
+
+    if (IsStopRequested())
     {
         return false;
     }
@@ -731,6 +813,48 @@ bool FOmniCaptureImageWriter::WriteEXRInternal(TUniquePtr<FImagePixelData> Pixel
 
     WriteQueue.Enqueue(MoveTemp(Task));
     return CompletionFuture.Get();
+}
+
+void FOmniCaptureImageWriter::RequestStop()
+{
+    bStopRequested.Store(true);
+}
+
+bool FOmniCaptureImageWriter::IsStopRequested() const
+{
+    return bStopRequested.Load();
+}
+
+void FOmniCaptureImageWriter::WaitForAvailableTaskSlot()
+{
+    if (MaxPendingTasks <= 0)
+    {
+        return;
+    }
+
+    while (!IsStopRequested())
+    {
+        TFuture<bool> TaskToWait;
+        {
+            FScopeLock Lock(&PendingTasksCS);
+            if (PendingTasks.Num() < MaxPendingTasks)
+            {
+                break;
+            }
+
+            TaskToWait = MoveTemp(PendingTasks[0]);
+            PendingTasks.RemoveAt(0, 1, EAllowShrinking::No);
+        }
+
+        if (TaskToWait.IsValid())
+        {
+            const bool bResult = TaskToWait.Get();
+            if (!bResult)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("OmniCapture image write task failed"));
+            }
+        }
+    }
 }
 
 void FOmniCaptureImageWriter::TrackPendingTask(TFuture<bool>&& TaskFuture)

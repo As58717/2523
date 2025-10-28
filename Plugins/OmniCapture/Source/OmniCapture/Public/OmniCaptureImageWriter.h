@@ -31,6 +31,9 @@ private:
     bool WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const;
     bool WriteEXRFromColor(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WriteEXRInternal(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EImagePixelType PixelType) const;
+    void RequestStop();
+    bool IsStopRequested() const;
+    void WaitForAvailableTaskSlot();
     void TrackPendingTask(TFuture<bool>&& TaskFuture);
     void PruneCompletedTasks();
     void EnforcePendingTaskLimit();
@@ -48,5 +51,6 @@ private:
 
     TArray<TFuture<bool>> PendingTasks;
     FCriticalSection PendingTasksCS;
+    TAtomic<bool> bStopRequested;
 };
 
