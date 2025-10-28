@@ -1,6 +1,7 @@
 #include "OmniCaptureTypes.h"
 
 #include "Math/UnrealMathUtility.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
@@ -180,6 +181,25 @@ FIntPoint FOmniCaptureSettings::GetPerEyeOutputResolution() const
     }
 
     return FIntPoint(Output.X, FMath::Max(1, Output.Y / 2));
+}
+
+FName GetAuxiliaryLayerName(EOmniCaptureAuxiliaryPassType PassType)
+{
+    if (PassType == EOmniCaptureAuxiliaryPassType::None)
+    {
+        return TEXT("Aux_None");
+    }
+
+    if (const UEnum* Enum = StaticEnum<EOmniCaptureAuxiliaryPassType>())
+    {
+        FString RawName = Enum->GetNameStringByValue(static_cast<int64>(PassType));
+        RawName.ReplaceInline(TEXT("EOmniCaptureAuxiliaryPassType::"), TEXT(""));
+        RawName.ReplaceInline(TEXT("::"), TEXT("_"));
+        RawName.ReplaceInline(TEXT("."), TEXT("_"));
+        return FName(*FString::Printf(TEXT("Aux_%s"), *RawName));
+    }
+
+    return TEXT("Aux_Unknown");
 }
 
 bool FOmniCaptureSettings::IsStereo() const
