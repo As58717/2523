@@ -254,6 +254,25 @@ bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, cons
     Root->SetNumberField(TEXT("perEyeWidth"), EyeSize.X);
     Root->SetNumberField(TEXT("perEyeHeight"), EyeSize.Y);
 
+    if (Settings.AuxiliaryPasses.Num() > 0)
+    {
+        TArray<TSharedPtr<FJsonValue>> AuxLayers;
+        for (EOmniCaptureAuxiliaryPassType Pass : Settings.AuxiliaryPasses)
+        {
+            if (Pass == EOmniCaptureAuxiliaryPassType::None)
+            {
+                continue;
+            }
+
+            AuxLayers.Add(MakeShared<FJsonValueString>(GetAuxiliaryLayerName(Pass).ToString()));
+        }
+
+        if (AuxLayers.Num() > 0)
+        {
+            Root->SetArrayField(TEXT("auxiliaryLayers"), AuxLayers);
+        }
+    }
+
     const bool bHalfSphere = Settings.IsVR180();
     const int32 FullPanoWidth = bHalfSphere ? OutputSize.X * 2 : OutputSize.X;
     const int32 FullPanoHeight = OutputSize.Y;

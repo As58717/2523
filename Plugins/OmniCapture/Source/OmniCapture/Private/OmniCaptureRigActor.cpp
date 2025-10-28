@@ -6,10 +6,59 @@
 #include "UObject/Package.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "OmniCaptureTypes.h"  // 增加头文件
+#include "UObject/UnrealType.h"
 
 namespace
 {
     constexpr int32 CubemapFaceCount = 6;
+
+    struct FAuxiliaryPassConfig
+    {
+        ESceneCaptureSource CaptureSource = ESceneCaptureSource::SCS_FinalColorHDR;
+        EPixelFormat PixelFormat = PF_FloatRGBA;
+        FLinearColor ClearColor = FLinearColor::Black;
+        bool bLinearTarget = true;
+    };
+
+    bool GetAuxiliaryPassConfig(EOmniCaptureAuxiliaryPassType PassType, FAuxiliaryPassConfig& OutConfig)
+    {
+        switch (PassType)
+        {
+        case EOmniCaptureAuxiliaryPassType::SceneDepth:
+            OutConfig.CaptureSource = ESceneCaptureSource::SCS_SceneDepth;
+            OutConfig.PixelFormat = PF_R32_FLOAT;
+            OutConfig.ClearColor = FLinearColor::White;
+            OutConfig.bLinearTarget = true;
+            return true;
+        case EOmniCaptureAuxiliaryPassType::WorldNormal:
+            OutConfig.CaptureSource = ESceneCaptureSource::SCS_Normal;
+            OutConfig.PixelFormat = PF_A16B16G16R16F;
+            OutConfig.ClearColor = FLinearColor::Black;
+            OutConfig.bLinearTarget = true;
+            return true;
+        case EOmniCaptureAuxiliaryPassType::BaseColor:
+            OutConfig.CaptureSource = ESceneCaptureSource::SCS_BaseColor;
+            OutConfig.PixelFormat = PF_FloatRGBA;
+            OutConfig.ClearColor = FLinearColor::Black;
+            OutConfig.bLinearTarget = true;
+            return true;
+        case EOmniCaptureAuxiliaryPassType::Roughness:
+            OutConfig.CaptureSource = ESceneCaptureSource::SCS_Roughness;
+            OutConfig.PixelFormat = PF_R16F;
+            OutConfig.ClearColor = FLinearColor::Black;
+            OutConfig.bLinearTarget = true;
+            return true;
+        case EOmniCaptureAuxiliaryPassType::AmbientOcclusion:
+            OutConfig.CaptureSource = ESceneCaptureSource::SCS_AmbientOcclusion;
+            OutConfig.PixelFormat = PF_R16F;
+            OutConfig.ClearColor = FLinearColor::White;
+            OutConfig.bLinearTarget = true;
+            return true;
+        default:
+            return false;
+        }
+    }
+
 }
 
 AOmniCaptureRigActor::AOmniCaptureRigActor()
@@ -48,6 +97,28 @@ void AOmniCaptureRigActor::Configure(const FOmniCaptureSettings& InSettings)
         }
     }
 
+    for (auto& Pair : LeftAuxiliaryCaptures)
+    {
+        for (USceneCaptureComponent2D* Capture : Pair.Value)
+        {
+            if (Capture)
+            {
+                Capture->DestroyComponent();
+            }
+        }
+    }
+
+    for (auto& Pair : RightAuxiliaryCaptures)
+    {
+        for (USceneCaptureComponent2D* Capture : Pair.Value)
+        {
+            if (Capture)
+            {
+                Capture->DestroyComponent();
+            }
+        }
+    }
+
     for (UTextureRenderTarget2D* RenderTarget : RenderTargets)
     {
         if (RenderTarget)
@@ -58,6 +129,8 @@ void AOmniCaptureRigActor::Configure(const FOmniCaptureSettings& InSettings)
 
     LeftEyeCaptures.Empty();
     RightEyeCaptures.Empty();
+    LeftAuxiliaryCaptures.Empty();
+    RightAuxiliaryCaptures.Empty();
     RenderTargets.Empty();
 
     const bool bPlanar = CachedSettings.IsPlanar();
@@ -68,10 +141,12 @@ void AOmniCaptureRigActor::Configure(const FOmniCaptureSettings& InSettings)
         : 0.0f;
 
     BuildEyeRig(EOmniCaptureEye::Left, -IPDHalf, FaceCount);
+    ConfigureAuxiliaryTargets(EOmniCaptureEye::Left, FaceCount, TargetSize);
 
     if (CachedSettings.Mode == EOmniCaptureMode::Stereo)
     {
         BuildEyeRig(EOmniCaptureEye::Right, IPDHalf, FaceCount);
+        ConfigureAuxiliaryTargets(EOmniCaptureEye::Right, FaceCount, TargetSize);
     }
 
     ApplyStereoParameters();
@@ -213,6 +288,92 @@ void AOmniCaptureRigActor::ConfigureCaptureComponent(USceneCaptureComponent2D* C
     const_cast<TArray<UTextureRenderTarget2D*>&>(RenderTargets).Add(RenderTarget);
 }
 
+USceneCaptureComponent2D* AOmniCaptureRigActor::CreateAuxiliaryCaptureComponent(const FString& ComponentName, EOmniCaptureAuxiliaryPassType PassType, const FIntPoint& TargetSize) const
+{
+    if (PassType == EOmniCaptureAuxiliaryPassType::None)
+    {
+        return nullptr;
+    }
+
+    FAuxiliaryPassConfig Config;
+    if (!GetAuxiliaryPassConfig(PassType, Config))
+    {
+        return nullptr;
+    }
+
+    USceneCaptureComponent2D* CaptureComponent = NewObject<USceneCaptureComponent2D>(this, *ComponentName);
+    CaptureComponent->SetRelativeLocation(FVector::ZeroVector);
+    CaptureComponent->FOVAngle = 90.0f;
+    CaptureComponent->CaptureSource = Config.CaptureSource;
+    CaptureComponent->bCaptureEveryFrame = false;
+    CaptureComponent->bCaptureOnMovement = false;
+    CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_RenderScenePrimitives;
+
+    UTextureRenderTarget2D* RenderTarget = NewObject<UTextureRenderTarget2D>(GetTransientPackage());
+    check(RenderTarget);
+
+    const int32 SizeX = FMath::Max(2, TargetSize.X);
+    const int32 SizeY = FMath::Max(2, TargetSize.Y);
+    RenderTarget->InitCustomFormat(SizeX, SizeY, Config.PixelFormat, false);
+    RenderTarget->TargetGamma = Config.bLinearTarget ? 1.0f : 2.2f;
+    RenderTarget->bAutoGenerateMips = false;
+    RenderTarget->ClearColor = Config.ClearColor;
+    RenderTarget->Filter = TF_Bilinear;
+
+    CaptureComponent->TextureTarget = RenderTarget;
+
+    const_cast<TArray<UTextureRenderTarget2D*>&>(RenderTargets).Add(RenderTarget);
+
+    return CaptureComponent;
+}
+
+void AOmniCaptureRigActor::ConfigureAuxiliaryTargets(EOmniCaptureEye Eye, int32 FaceCount, const FIntPoint& TargetSize)
+{
+    if (CachedSettings.AuxiliaryPasses.Num() == 0)
+    {
+        return;
+    }
+
+    USceneComponent* EyeRoot = Eye == EOmniCaptureEye::Left ? LeftEyeRoot : RightEyeRoot;
+    if (!EyeRoot)
+    {
+        return;
+    }
+
+    TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>& TargetMap = (Eye == EOmniCaptureEye::Left) ? const_cast<TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>&>(LeftAuxiliaryCaptures) : const_cast<TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>&>(RightAuxiliaryCaptures);
+
+    for (EOmniCaptureAuxiliaryPassType Pass : CachedSettings.AuxiliaryPasses)
+    {
+        if (Pass == EOmniCaptureAuxiliaryPassType::None)
+        {
+            continue;
+        }
+
+        TArray<USceneCaptureComponent2D*>& CaptureArray = TargetMap.FindOrAdd(Pass);
+        CaptureArray.SetNum(FaceCount);
+
+        for (int32 FaceIndex = 0; FaceIndex < FaceCount; ++FaceIndex)
+        {
+            const FString PassName = GetAuxiliaryLayerName(Pass).ToString();
+            const FString ComponentName = FString::Printf(TEXT("%s_%s_%d"), Eye == EOmniCaptureEye::Left ? TEXT("Left") : TEXT("Right"), *PassName, FaceIndex);
+            if (USceneCaptureComponent2D* AuxCapture = CreateAuxiliaryCaptureComponent(ComponentName, Pass, TargetSize))
+            {
+                AuxCapture->SetupAttachment(EyeRoot);
+                AuxCapture->RegisterComponent();
+
+                if (!CachedSettings.IsPlanar())
+                {
+                    FRotator FaceRotation;
+                    GetOrientationForFace(FaceIndex, FaceRotation);
+                    AuxCapture->SetRelativeRotation(FaceRotation);
+                }
+
+                CaptureArray[FaceIndex] = AuxCapture;
+            }
+        }
+    }
+}
+
 void AOmniCaptureRigActor::CaptureEye(EOmniCaptureEye Eye, FOmniEyeCapture& OutCapture) const
 {
     const TArray<USceneCaptureComponent2D*>& CaptureComponents = Eye == EOmniCaptureEye::Left ? LeftEyeCaptures : RightEyeCaptures;
@@ -222,6 +383,7 @@ void AOmniCaptureRigActor::CaptureEye(EOmniCaptureEye Eye, FOmniEyeCapture& OutC
     for (int32 FaceIndex = 0; FaceIndex < UE_ARRAY_COUNT(OutCapture.Faces); ++FaceIndex)
     {
         OutCapture.Faces[FaceIndex].RenderTarget = nullptr;
+        OutCapture.Faces[FaceIndex].AuxiliaryTargets.Reset();
     }
 
     for (int32 FaceIndex = 0; FaceIndex < CaptureComponents.Num(); ++FaceIndex)
@@ -232,6 +394,28 @@ void AOmniCaptureRigActor::CaptureEye(EOmniCaptureEye Eye, FOmniEyeCapture& OutC
 
             UTextureRenderTarget2D* RenderTarget = Cast<UTextureRenderTarget2D>(CaptureComponent->TextureTarget);
             OutCapture.Faces[FaceIndex].RenderTarget = RenderTarget;
+        }
+    }
+
+    const TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>* AuxMap = Eye == EOmniCaptureEye::Left ? &LeftAuxiliaryCaptures : &RightAuxiliaryCaptures;
+    if (AuxMap)
+    {
+        for (const TPair<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>& Pair : *AuxMap)
+        {
+            const EOmniCaptureAuxiliaryPassType PassType = Pair.Key;
+            const TArray<USceneCaptureComponent2D*>& AuxCaptures = Pair.Value;
+
+            for (int32 FaceIndex = 0; FaceIndex < AuxCaptures.Num(); ++FaceIndex)
+            {
+                if (USceneCaptureComponent2D* AuxCapture = AuxCaptures[FaceIndex])
+                {
+                    AuxCapture->CaptureScene();
+                    if (UTextureRenderTarget2D* AuxTarget = Cast<UTextureRenderTarget2D>(AuxCapture->TextureTarget))
+                    {
+                        OutCapture.Faces[FaceIndex].AuxiliaryTargets.Add(PassType, AuxTarget);
+                    }
+                }
+            }
         }
     }
 }

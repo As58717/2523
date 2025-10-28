@@ -158,16 +158,36 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
     bool bIsLinear = Frame->bLinearColor;
 
     TUniquePtr<FImagePixelData> PixelData = MoveTemp(Frame->PixelData);
+    TMap<FName, FOmniCaptureLayerPayload> AuxiliaryLayers = MoveTemp(Frame->AuxiliaryLayers);
     if (!PixelData.IsValid())
     {
         return;
     }
 
     const EOmniCapturePixelPrecision PixelPrecision = Frame->PixelPrecision;
+    const FString LayerDirectory = FPaths::GetPath(TargetPath);
+    const FString LayerBaseName = FPaths::GetBaseFilename(TargetPath);
+    const FString LayerExtension = FPaths::GetExtension(TargetPath, true);
 
-    TFuture<bool> Future = Async(EAsyncExecution::ThreadPool, [this, FilePath = MoveTemp(TargetPath), Format = TargetFormat, bIsLinear, PixelPrecision, PixelData = MoveTemp(PixelData)]() mutable
+    TFuture<bool> Future = Async(EAsyncExecution::ThreadPool, [this, FilePath = MoveTemp(TargetPath), Format = TargetFormat, bIsLinear, PixelPrecision, PixelData = MoveTemp(PixelData), AuxiliaryLayers = MoveTemp(AuxiliaryLayers), LayerDirectory, LayerBaseName, LayerExtension]() mutable
     {
-        return WritePixelDataToDisk(MoveTemp(PixelData), FilePath, Format, bIsLinear, PixelPrecision);
+        bool bResult = WritePixelDataToDisk(MoveTemp(PixelData), FilePath, Format, bIsLinear, PixelPrecision);
+
+        for (TPair<FName, FOmniCaptureLayerPayload>& Pair : AuxiliaryLayers)
+        {
+            if (!Pair.Value.PixelData.IsValid())
+            {
+                continue;
+            }
+
+            const FString LayerFileName = FString::Printf(TEXT("%s_%s%s"), *LayerBaseName, *Pair.Key.ToString(), *LayerExtension);
+            const FString LayerPath = FPaths::Combine(LayerDirectory, LayerFileName);
+            const bool bLayerLinear = Pair.Value.bLinear;
+            const EOmniCapturePixelPrecision LayerPrecision = (Pair.Value.Precision == EOmniCapturePixelPrecision::Unknown) ? PixelPrecision : Pair.Value.Precision;
+            bResult &= WritePixelDataToDisk(MoveTemp(Pair.Value.PixelData), LayerPath, Format, bLayerLinear, LayerPrecision);
+        }
+
+        return bResult;
     });
 
     TrackPendingTask(MoveTemp(Future));

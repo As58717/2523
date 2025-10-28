@@ -102,6 +102,17 @@ enum class EOmniCaptureDiagnosticLevel : uint8
         Error
 };
 
+UENUM(BlueprintType)
+enum class EOmniCaptureAuxiliaryPassType : uint8
+{
+        None,
+        SceneDepth,
+        WorldNormal,
+        BaseColor,
+        Roughness,
+        AmbientOcclusion
+};
+
 USTRUCT(BlueprintType)
 struct OMNICAPTURE_API FOmniCaptureDiagnosticEntry
 {
@@ -210,6 +221,11 @@ struct OMNICAPTURE_API FOmniCaptureSettings
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bWriteXMPMetadata = true;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Metadata") bool bInjectFFmpegMetadata = true;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering") FOmniCaptureRenderFeatureOverrides RenderingOverrides;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering") TArray<EOmniCaptureAuxiliaryPassType> AuxiliaryPasses;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Offline Rendering") bool bEnableOfflineSampling = false;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Offline Rendering", meta = (EditCondition = "bEnableOfflineSampling", ClampMin = 1, UIMin = 1)) int32 TemporalSampleCount = 1;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Offline Rendering", meta = (EditCondition = "bEnableOfflineSampling", ClampMin = 1, UIMin = 1)) int32 SpatialSampleCount = 1;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Offline Rendering", meta = (EditCondition = "bEnableOfflineSampling", ClampMin = 0, UIMin = 0)) int32 WarmUpFrameCount = 0;
 
         FIntPoint GetEquirectResolution() const;
         FIntPoint GetPlanarResolution() const;
@@ -247,10 +263,17 @@ struct FOmniAudioPacket
 USTRUCT()
 struct FOmniCaptureFrameMetadata
 {
-	GENERATED_BODY()
-	UPROPERTY() int32 FrameIndex = 0;
-	UPROPERTY() double Timecode = 0.0;
-	UPROPERTY() bool bKeyFrame = false;
+        GENERATED_BODY()
+        UPROPERTY() int32 FrameIndex = 0;
+        UPROPERTY() double Timecode = 0.0;
+        UPROPERTY() bool bKeyFrame = false;
+};
+
+struct FOmniCaptureLayerPayload
+{
+        TUniquePtr<FImagePixelData> PixelData;
+        bool bLinear = false;
+        EOmniCapturePixelPrecision Precision = EOmniCapturePixelPrecision::Unknown;
 };
 
 struct FOmniCaptureFrame
@@ -265,6 +288,7 @@ struct FOmniCaptureFrame
         EOmniCapturePixelPrecision PixelPrecision = EOmniCapturePixelPrecision::Unknown;
         TArray<FOmniAudioPacket> AudioPackets;
         TArray<FTextureRHIRef> EncoderTextures;
+        TMap<FName, FOmniCaptureLayerPayload> AuxiliaryLayers;
 };
 
 USTRUCT(BlueprintType)
@@ -279,11 +303,13 @@ struct FOmniCaptureRingBufferStats
 USTRUCT(BlueprintType)
 struct FOmniAudioSyncStats
 {
-	GENERATED_BODY()
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") double LatestVideoTimestamp = 0.0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") double LatestAudioTimestamp = 0.0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") double DriftMilliseconds = 0.0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") double MaxObservedDriftMilliseconds = 0.0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") int32 PendingPackets = 0;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") bool bInError = false;
+        GENERATED_BODY()
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") double LatestVideoTimestamp = 0.0;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") double LatestAudioTimestamp = 0.0;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") double DriftMilliseconds = 0.0;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") double MaxObservedDriftMilliseconds = 0.0;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") int32 PendingPackets = 0;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio") bool bInError = false;
 };
+
+OMNICAPTURE_API FName GetAuxiliaryLayerName(EOmniCaptureAuxiliaryPassType PassType);

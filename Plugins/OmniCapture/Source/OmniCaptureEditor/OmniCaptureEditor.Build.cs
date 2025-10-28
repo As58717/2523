@@ -16,7 +16,9 @@ public class OmniCaptureEditor : ModuleRules
             "Slate",
             "SlateCore",
             "UMG",
-            "OmniCapture"  // 主模块依赖
+            "OmniCapture",
+            "MovieRenderPipelineCore",
+            "MovieRenderPipelineSettings"
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]
@@ -30,7 +32,8 @@ public class OmniCaptureEditor : ModuleRules
             "UnrealEd",            // 编辑器核心功能
             "DesktopPlatform",     // 用于输出目录选择对话框
             "RHI",
-            "RHICore"
+            "RHICore",
+            "MovieRenderPipelineEditor"
         });
     }
 }

@@ -517,6 +517,41 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
 
     FOmniCaptureEquirectResult Result = ConvertFrame(StillSettings, LeftEye, RightEye);
 
+    TMap<FName, FOmniCaptureLayerPayload> AuxiliaryLayers;
+    if (StillSettings.AuxiliaryPasses.Num() > 0)
+    {
+        auto BuildAuxEye = [](const FOmniEyeCapture& SourceEye, EOmniCaptureAuxiliaryPassType PassType)
+        {
+            FOmniEyeCapture AuxEye;
+            AuxEye.ActiveFaceCount = SourceEye.ActiveFaceCount;
+            for (int32 FaceIndex = 0; FaceIndex < AuxEye.ActiveFaceCount && FaceIndex < UE_ARRAY_COUNT(AuxEye.Faces); ++FaceIndex)
+            {
+                AuxEye.Faces[FaceIndex].RenderTarget = SourceEye.Faces[FaceIndex].GetAuxiliaryRenderTarget(PassType);
+            }
+            return AuxEye;
+        };
+
+        for (EOmniCaptureAuxiliaryPassType PassType : StillSettings.AuxiliaryPasses)
+        {
+            if (PassType == EOmniCaptureAuxiliaryPassType::None)
+            {
+                continue;
+            }
+
+            const FOmniEyeCapture AuxLeft = BuildAuxEye(LeftEye, PassType);
+            const FOmniEyeCapture AuxRight = BuildAuxEye(RightEye, PassType);
+            FOmniCaptureEquirectResult AuxResult = ConvertFrame(StillSettings, AuxLeft, AuxRight);
+            if (AuxResult.PixelData.IsValid())
+            {
+                FOmniCaptureLayerPayload Payload;
+                Payload.PixelData = MoveTemp(AuxResult.PixelData);
+                Payload.bLinear = AuxResult.bIsLinear;
+                Payload.Precision = AuxResult.PixelPrecision;
+                AuxiliaryLayers.Add(GetAuxiliaryLayerName(PassType), MoveTemp(Payload));
+            }
+        }
+    }
+
     World->DestroyActor(TempRig);
 
     if (!Result.PixelData.IsValid())
@@ -552,6 +587,7 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
     Frame->PixelData = MoveTemp(Result.PixelData);
     Frame->bLinearColor = Result.bIsLinear;
     Frame->bUsedCPUFallback = Result.bUsedCPUFallback;
+    Frame->AuxiliaryLayers = MoveTemp(AuxiliaryLayers);
 
     Writer.EnqueueFrame(MoveTemp(Frame), FileName);
     Writer.Flush();
@@ -1255,6 +1291,41 @@ void UOmniCaptureSubsystem::CaptureFrame()
     };
 
     FOmniCaptureEquirectResult ConversionResult = ConvertActiveFrame(ActiveSettings, LeftEye, RightEye);
+
+    TMap<FName, FOmniCaptureLayerPayload> AuxiliaryLayers;
+    if (ActiveSettings.AuxiliaryPasses.Num() > 0)
+    {
+        auto BuildAuxiliaryEye = [](const FOmniEyeCapture& SourceEye, EOmniCaptureAuxiliaryPassType PassType)
+        {
+            FOmniEyeCapture AuxEye;
+            AuxEye.ActiveFaceCount = SourceEye.ActiveFaceCount;
+            for (int32 FaceIndex = 0; FaceIndex < AuxEye.ActiveFaceCount && FaceIndex < UE_ARRAY_COUNT(AuxEye.Faces); ++FaceIndex)
+            {
+                AuxEye.Faces[FaceIndex].RenderTarget = SourceEye.Faces[FaceIndex].GetAuxiliaryRenderTarget(PassType);
+            }
+            return AuxEye;
+        };
+
+        for (EOmniCaptureAuxiliaryPassType PassType : ActiveSettings.AuxiliaryPasses)
+        {
+            if (PassType == EOmniCaptureAuxiliaryPassType::None)
+            {
+                continue;
+            }
+
+            const FOmniEyeCapture AuxLeft = BuildAuxiliaryEye(LeftEye, PassType);
+            const FOmniEyeCapture AuxRight = BuildAuxiliaryEye(RightEye, PassType);
+            FOmniCaptureEquirectResult AuxResult = ConvertActiveFrame(ActiveSettings, AuxLeft, AuxRight);
+            if (AuxResult.PixelData.IsValid())
+            {
+                FOmniCaptureLayerPayload Payload;
+                Payload.PixelData = MoveTemp(AuxResult.PixelData);
+                Payload.bLinear = AuxResult.bIsLinear;
+                Payload.Precision = AuxResult.PixelPrecision;
+                AuxiliaryLayers.Add(GetAuxiliaryLayerName(PassType), MoveTemp(Payload));
+            }
+        }
+    }
     const bool bRequiresGPU = ActiveSettings.OutputFormat == EOmniOutputFormat::NVENCHardware;
     if (!ConversionResult.PixelData.IsValid())
     {
@@ -1296,6 +1367,7 @@ void UOmniCaptureSubsystem::CaptureFrame()
     Frame->bUsedCPUFallback = ConversionResult.bUsedCPUFallback;
     Frame->PixelPrecision = ConversionResult.PixelPrecision;
     Frame->EncoderTextures.Reset();
+    Frame->AuxiliaryLayers = MoveTemp(AuxiliaryLayers);
     for (const TRefCountPtr<IPooledRenderTarget>& Plane : ConversionResult.EncoderPlanes)
     {
         if (!Plane.IsValid())
@@ -1424,6 +1496,23 @@ void UOmniCaptureSubsystem::ApplyRenderFeatureOverrides()
         }
     };
 
+    auto ApplyFloatOverride = [this](bool bShouldApply, const TCHAR* Name, float Value)
+    {
+        if (!bShouldApply)
+        {
+            return;
+        }
+
+        if (IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(Name))
+        {
+            FConsoleVariableOverrideRecord Record;
+            Record.Variable = Var;
+            Record.PreviousValue = Var->GetString();
+            ConsoleOverrideRecords.Add(Record);
+            Var->Set(Value, ECVF_SetByCode);
+        }
+    };
+
     ApplyStringOverride(Overrides.bForceRayTracing, TEXT("r.RayTracing.Force"), TEXT("1"));
     ApplyStringOverride(Overrides.bForcePathTracing, TEXT("r.PathTracing"), TEXT("1"));
     ApplyStringOverride(Overrides.bForcePathTracing, TEXT("r.PathTracing.Enable"), TEXT("1"));
@@ -1434,6 +1523,13 @@ void UOmniCaptureSubsystem::ApplyRenderFeatureOverrides()
     ApplyNumericOverride(Overrides.bEnableBloom, TEXT("r.BloomQuality"), 5);
     ApplyNumericOverride(Overrides.bEnableAntiAliasing, TEXT("r.DefaultFeature.AntiAliasing"), 2);
     ApplyNumericOverride(Overrides.bEnableAntiAliasing, TEXT("r.AntiAliasingMethod"), 4);
+
+    const bool bOffline = ActiveSettings.bEnableOfflineSampling;
+    ApplyNumericOverride(bOffline, TEXT("r.MoviePipeline.WarmUpCount"), ActiveSettings.WarmUpFrameCount);
+    ApplyNumericOverride(bOffline, TEXT("r.SpatialSampleCount"), ActiveSettings.SpatialSampleCount);
+    ApplyNumericOverride(bOffline, TEXT("r.TemporalAASamples"), ActiveSettings.TemporalSampleCount);
+    ApplyNumericOverride(bOffline, TEXT("r.PathTracing.SamplesPerPixel"), ActiveSettings.TemporalSampleCount);
+    ApplyFloatOverride(bOffline, TEXT("r.SecondaryScreenPercentage.MoviePipeline"), 100.0f);
 
     bRenderOverridesApplied = ConsoleOverrideRecords.Num() > 0;
 }
