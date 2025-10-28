@@ -24,10 +24,13 @@ private:
     bool WritePNGWithRowSource(const FString& FilePath, const FIntPoint& Size, ERGBFormat Format, int32 BitDepth, TFunctionRef<void(int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)> PrepareRows) const;
     bool WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WritePNGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
+    bool WritePNGFromLinearFloat32(const TImagePixelData<FLinearColor>& PixelData, const FString& FilePath) const;
     bool WriteBMP(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WriteBMPFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
+    bool WriteBMPFromLinearFloat32(const TImagePixelData<FLinearColor>& PixelData, const FString& FilePath) const;
     bool WriteJPEG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WriteJPEGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
+    bool WriteJPEGFromLinearFloat32(const TImagePixelData<FLinearColor>& PixelData, const FString& FilePath) const;
     bool WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const;
     bool WriteEXRFromColor(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WriteEXRInternal(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EImagePixelType PixelType) const;
