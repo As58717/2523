@@ -25,6 +25,12 @@
 #include "RHI.h"
 #include "PixelFormat.h"
 #include "Math/UnrealMathUtility.h"
+#include "Engine/RendererSettings.h"
+#include "DataDrivenShaderPlatformInfo.h"
+
+#if RHI_RAYTRACING
+#include "RayTracingDefinitions.h"
+#endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogOmniCaptureSubsystem, Log, All);
 
@@ -1462,6 +1468,123 @@ void UOmniCaptureSubsystem::ApplyRenderFeatureOverrides()
     ConsoleOverrideRecords.Reset();
     bRenderOverridesApplied = false;
 
+    const FString StepName = TEXT("RenderOverrides");
+
+    auto WarnUnsupported = [this, &StepName](const FString& Message)
+    {
+        if (Message.IsEmpty())
+        {
+            return;
+        }
+
+        AddWarningUnique(Message);
+        LogDiagnosticMessage(ELogVerbosity::Warning, StepName, Message);
+    };
+
+    const URendererSettings* RendererSettings = GetDefault<URendererSettings>();
+
+    bool bRayTracingSupported = false;
+    FString RayTracingFailureReason;
+
+#if RHI_RAYTRACING
+    bRayTracingSupported = GRHISupportsRayTracing;
+    if (!bRayTracingSupported)
+    {
+        RayTracingFailureReason = TEXT("Hardware or RHI does not support ray tracing.");
+    }
+    else if (RendererSettings && !RendererSettings->bSupportRayTracing)
+    {
+        bRayTracingSupported = false;
+        RayTracingFailureReason = TEXT("Ray tracing disabled in project renderer settings.");
+    }
+    else if (!IsRayTracingAllowed())
+    {
+        bRayTracingSupported = false;
+        RayTracingFailureReason = TEXT("Ray tracing disabled by runtime configuration.");
+    }
+#else
+    RayTracingFailureReason = TEXT("Engine build lacks ray tracing support.");
+#endif
+
+    bool bPathTracingSupported = false;
+    FString PathTracingFailureReason;
+
+    if (RendererSettings && !RendererSettings->bSupportPathTracing)
+    {
+        PathTracingFailureReason = TEXT("Path tracing disabled in project renderer settings.");
+    }
+    else
+    {
+#if RHI_RAYTRACING
+        if (!bRayTracingSupported)
+        {
+            PathTracingFailureReason = TEXT("Path tracing requires ray tracing support.");
+        }
+        else if (!FDataDrivenShaderPlatformInfo::GetSupportsPathTracing(GMaxRHIShaderPlatform))
+        {
+            PathTracingFailureReason = TEXT("Path tracing unsupported on the active shader platform.");
+        }
+        else
+        {
+            bPathTracingSupported = true;
+        }
+#else
+        PathTracingFailureReason = TEXT("Engine build lacks ray tracing support required for path tracing.");
+#endif
+    }
+
+    bool bLumenSupported = false;
+    FString LumenFailureReason;
+
+    if (RendererSettings && !RendererSettings->bSupportLumen)
+    {
+        LumenFailureReason = TEXT("Lumen disabled in project renderer settings.");
+    }
+    else if (!FDataDrivenShaderPlatformInfo::GetSupportsLumenGI(GMaxRHIShaderPlatform))
+    {
+        LumenFailureReason = TEXT("Lumen unsupported on the active shader platform.");
+    }
+    else
+    {
+        bLumenSupported = true;
+    }
+
+    bool bDLSSSupported = false;
+    FString DLSSFailureReason;
+
+    if (IConsoleManager::Get().FindConsoleVariable(TEXT("r.NGX.DLSS.Enable")))
+    {
+        bDLSSSupported = true;
+    }
+    else
+    {
+        DLSSFailureReason = TEXT("DLSS console variables not found; NGX runtime unavailable.");
+    }
+
+    const bool bApplyRayTracing = Overrides.bForceRayTracing && bRayTracingSupported;
+    if (Overrides.bForceRayTracing && !bApplyRayTracing)
+    {
+        WarnUnsupported(TEXT("Ray tracing override ignored: ") + RayTracingFailureReason);
+    }
+
+    const bool bApplyPathTracing = Overrides.bForcePathTracing && bPathTracingSupported;
+    if (Overrides.bForcePathTracing && !bApplyPathTracing)
+    {
+        WarnUnsupported(TEXT("Path tracing override ignored: ") + PathTracingFailureReason);
+    }
+
+    const bool bApplyLumen = Overrides.bForceLumen && bLumenSupported;
+    if (Overrides.bForceLumen && !bApplyLumen)
+    {
+        WarnUnsupported(TEXT("Lumen override ignored: ") + LumenFailureReason);
+    }
+
+    const bool bApplyDLSS = Overrides.bEnableDLSS && bDLSSSupported;
+    if (Overrides.bEnableDLSS && !bApplyDLSS)
+    {
+        WarnUnsupported(TEXT("DLSS override ignored: ") + DLSSFailureReason);
+    }
+
     auto ApplyStringOverride = [this](bool bShouldApply, const TCHAR* Name, const TCHAR* Value)
     {
         if (!bShouldApply)
@@ -1513,12 +1636,12 @@ void UOmniCaptureSubsystem::ApplyRenderFeatureOverrides()
         }
     };
 
-    ApplyStringOverride(Overrides.bForceRayTracing, TEXT("r.RayTracing.Force"), TEXT("1"));
-    ApplyStringOverride(Overrides.bForcePathTracing, TEXT("r.PathTracing"), TEXT("1"));
-    ApplyStringOverride(Overrides.bForcePathTracing, TEXT("r.PathTracing.Enable"), TEXT("1"));
-    ApplyStringOverride(Overrides.bForceLumen, TEXT("r.Lumen.HardwareRayTracing"), TEXT("1"));
-    ApplyStringOverride(Overrides.bForceLumen, TEXT("r.Lumen.ScreenProbeGather"), TEXT("1"));
-    ApplyStringOverride(Overrides.bEnableDLSS, TEXT("r.NGX.DLSS.Enable"), TEXT("1"));
+    ApplyStringOverride(bApplyRayTracing, TEXT("r.RayTracing.Force"), TEXT("1"));
+    ApplyStringOverride(bApplyPathTracing, TEXT("r.PathTracing"), TEXT("1"));
+    ApplyStringOverride(bApplyPathTracing, TEXT("r.PathTracing.Enable"), TEXT("1"));
+    ApplyStringOverride(bApplyLumen, TEXT("r.Lumen.HardwareRayTracing"), TEXT("1"));
+    ApplyStringOverride(bApplyLumen, TEXT("r.Lumen.ScreenProbeGather"), TEXT("1"));
+    ApplyStringOverride(bApplyDLSS, TEXT("r.NGX.DLSS.Enable"), TEXT("1"));
     ApplyNumericOverride(Overrides.bEnableBloom, TEXT("r.DefaultFeature.Bloom"), 1);
     ApplyNumericOverride(Overrides.bEnableBloom, TEXT("r.BloomQuality"), 5);
     ApplyNumericOverride(Overrides.bEnableAntiAliasing, TEXT("r.DefaultFeature.AntiAliasing"), 2);
