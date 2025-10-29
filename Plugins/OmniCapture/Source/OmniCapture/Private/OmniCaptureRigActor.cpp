@@ -54,6 +54,12 @@ namespace
             OutConfig.ClearColor = FLinearColor::White;
             OutConfig.bLinearTarget = true;
             return true;
+        case EOmniCaptureAuxiliaryPassType::MotionVector:
+            OutConfig.CaptureSource = ESceneCaptureSource::SCS_FinalColorHDR;
+            OutConfig.PixelFormat = PF_FloatRGBA;
+            OutConfig.ClearColor = FLinearColor::Black;
+            OutConfig.bLinearTarget = true;
+            return true;
         default:
             return false;
         }
@@ -321,6 +327,19 @@ USceneCaptureComponent2D* AOmniCaptureRigActor::CreateAuxiliaryCaptureComponent(
     RenderTarget->Filter = TF_Bilinear;
 
     CaptureComponent->TextureTarget = RenderTarget;
+
+    if (PassType == EOmniCaptureAuxiliaryPassType::MotionVector)
+    {
+        CaptureComponent->bAlwaysPersistRenderingState = true;
+        CaptureComponent->ShowFlags.SetPostProcessing(false);
+        CaptureComponent->ShowFlags.SetTonemapper(false);
+        CaptureComponent->ShowFlags.SetBloom(false);
+        CaptureComponent->ShowFlags.SetLighting(false);
+        CaptureComponent->ShowFlags.SetFog(false);
+        CaptureComponent->ShowFlags.SetAntiAliasing(false);
+        CaptureComponent->ShowFlags.SetVisualizeMotionBlur(true);
+        CaptureComponent->ShowFlags.SetMotionBlur(true);
+    }
 
     const_cast<TArray<UTextureRenderTarget2D*>&>(RenderTargets).Add(RenderTarget);
 

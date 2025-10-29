@@ -123,7 +123,8 @@ enum class EOmniCaptureAuxiliaryPassType : uint8
         WorldNormal,
         BaseColor,
         Roughness,
-        AmbientOcclusion
+        AmbientOcclusion,
+        MotionVector
 };
 
 USTRUCT(BlueprintType)
