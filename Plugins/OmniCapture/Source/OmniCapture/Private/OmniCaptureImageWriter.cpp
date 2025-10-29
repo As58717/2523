@@ -11,14 +11,89 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
+#include "Containers/StringConv.h"
+#include "Internationalization/Internationalization.h"
+#include "Math/Vector2D.h"
+
+#include <exception>
 
 THIRD_PARTY_INCLUDES_START
 #include "png.h"
+#include "OpenEXR/ImfMultiPartOutputFile.h"
+#include "OpenEXR/ImfOutputFile.h"
+#include "OpenEXR/ImfOutputPart.h"
+#include "OpenEXR/ImfChannelList.h"
+#include "OpenEXR/ImfFrameBuffer.h"
+#include "OpenEXR/ImfStringAttribute.h"
+#include "OpenEXR/ImfCompression.h"
+#include "OpenEXR/ImfNamespace.h"
+#include "Imath/half.h"
 THIRD_PARTY_INCLUDES_END
 
 namespace
 {
     constexpr int32 DefaultJpegQuality = 85;
+
+    OPENEXR_IMF_NAMESPACE::Compression ToOpenExrCompression(EOmniCaptureEXRCompression Compression)
+    {
+        using namespace OPENEXR_IMF_NAMESPACE;
+        switch (Compression)
+        {
+        case EOmniCaptureEXRCompression::None:
+            return NO_COMPRESSION;
+        case EOmniCaptureEXRCompression::Zips:
+            return ZIPS_COMPRESSION;
+        case EOmniCaptureEXRCompression::Piz:
+            return PIZ_COMPRESSION;
+        case EOmniCaptureEXRCompression::Pxr24:
+            return PXR24_COMPRESSION;
+        case EOmniCaptureEXRCompression::Dwaa:
+            return DWAA_COMPRESSION;
+        case EOmniCaptureEXRCompression::Dwab:
+            return DWAB_COMPRESSION;
+        case EOmniCaptureEXRCompression::Rle:
+            return RLE_COMPRESSION;
+        case EOmniCaptureEXRCompression::Zip:
+        default:
+            return ZIP_COMPRESSION;
+        }
+    }
+
+    const TCHAR* GetChannelSuffix(int32 ChannelIndex)
+    {
+        switch (ChannelIndex)
+        {
+        case 0: return TEXT("R");
+        case 1: return TEXT("G");
+        case 2: return TEXT("B");
+        case 3: return TEXT("A");
+        default: return TEXT("X");
+        }
+    }
+
+    struct FPreparedExrLayer
+    {
+        std::string Name;
+        OPENEXR_IMF_NAMESPACE::PixelType PixelType = OPENEXR_IMF_NAMESPACE::PixelType::HALF;
+        int32 ChannelCount = 4;
+        TArray<float> FloatBuffer;
+        TArray<IMATH_NAMESPACE::half> HalfBuffer;
+
+        const char* GetBasePointer() const
+        {
+            if (PixelType == OPENEXR_IMF_NAMESPACE::PixelType::FLOAT)
+            {
+                return reinterpret_cast<const char*>(FloatBuffer.GetData());
+            }
+
+            return reinterpret_cast<const char*>(HalfBuffer.GetData());
+        }
+
+        int32 GetComponentSize() const
+        {
+            return PixelType == OPENEXR_IMF_NAMESPACE::PixelType::FLOAT ? sizeof(float) : sizeof(IMATH_NAMESPACE::half);
+        }
+    };
 
     TSharedPtr<IImageWrapper> CreateImageWrapper(EImageFormat Format)
     {
@@ -134,6 +209,9 @@ void FOmniCaptureImageWriter::Initialize(const FOmniCaptureSettings& Settings, c
     TargetFormat = Settings.ImageFormat;
     TargetPNGBitDepth = Settings.PNGBitDepth;
     MaxPendingTasks = FMath::Max(1, Settings.MaxPendingImageTasks);
+    bPackEXRAuxiliaryLayers = Settings.bPackEXRAuxiliaryLayers;
+    bUseEXRMultiPart = Settings.bUseEXRMultiPart;
+    TargetEXRCompression = Settings.EXRCompression;
     bStopRequested.Store(false);
     bInitialized = true;
 }
@@ -171,6 +249,11 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
 
     TFuture<bool> Future = Async(EAsyncExecution::ThreadPool, [this, FilePath = MoveTemp(TargetPath), Format = TargetFormat, bIsLinear, PixelPrecision, PixelData = MoveTemp(PixelData), AuxiliaryLayers = MoveTemp(AuxiliaryLayers), LayerDirectory, LayerBaseName, LayerExtension]() mutable
     {
+        if (Format == EOmniCaptureImageFormat::EXR)
+        {
+            return WriteEXRFrame(FilePath, bIsLinear, MoveTemp(PixelData), PixelPrecision, MoveTemp(AuxiliaryLayers), LayerDirectory, LayerBaseName, LayerExtension);
+        }
+
         bool bResult = WritePixelDataToDisk(MoveTemp(PixelData), FilePath, Format, bIsLinear, PixelPrecision);
 
         for (TPair<FName, FOmniCaptureLayerPayload>& Pair : AuxiliaryLayers)
@@ -226,6 +309,42 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
     if (IsStopRequested())
     {
         return false;
+    }
+
+    if (Format != EOmniCaptureImageFormat::EXR)
+    {
+        if (const TImagePixelData<float>* ScalarData = dynamic_cast<const TImagePixelData<float>*>(PixelData.Get()))
+        {
+            const FIntPoint Size = ScalarData->GetSize();
+            const int32 PixelCount = Size.X * Size.Y;
+            TUniquePtr<TImagePixelData<FLinearColor>> Expanded = MakeUnique<TImagePixelData<FLinearColor>>(Size);
+            Expanded->Pixels.SetNum(PixelCount);
+            for (int32 Index = 0; Index < PixelCount; ++Index)
+            {
+                const float Value = ScalarData->Pixels[Index];
+                Expanded->Pixels[Index] = FLinearColor(Value, Value, Value, Value);
+            }
+
+            PixelData = MoveTemp(Expanded);
+            PixelPrecision = EOmniCapturePixelPrecision::FullFloat;
+            bIsLinear = true;
+        }
+        else if (const TImagePixelData<FVector2f>* VectorData = dynamic_cast<const TImagePixelData<FVector2f>*>(PixelData.Get()))
+        {
+            const FIntPoint Size = VectorData->GetSize();
+            const int32 PixelCount = Size.X * Size.Y;
+            TUniquePtr<TImagePixelData<FLinearColor>> Expanded = MakeUnique<TImagePixelData<FLinearColor>>(Size);
+            Expanded->Pixels.SetNum(PixelCount);
+            for (int32 Index = 0; Index < PixelCount; ++Index)
+            {
+                const FVector2f& Value = VectorData->Pixels[Index];
+                Expanded->Pixels[Index] = FLinearColor(Value.X, Value.Y, 0.0f, 0.0f);
+            }
+
+            PixelData = MoveTemp(Expanded);
+            PixelPrecision = EOmniCapturePixelPrecision::FullFloat;
+            bIsLinear = true;
+        }
     }
 
     bool bWriteSuccessful = false;
@@ -885,6 +1004,271 @@ bool FOmniCaptureImageWriter::WriteJPEGFromLinearFloat32(const TImagePixelData<F
     }
 
     return WriteJPEG(*TempData, FilePath);
+}
+
+bool FOmniCaptureImageWriter::WriteEXRFrame(const FString& FilePath, bool bIsLinear, TUniquePtr<FImagePixelData> PixelData, EOmniCapturePixelPrecision PixelPrecision, TMap<FName, FOmniCaptureLayerPayload>&& AuxiliaryLayers, const FString& LayerDirectory, const FString& LayerBaseName, const FString& LayerExtension) const
+{
+    if (!PixelData.IsValid())
+    {
+        return false;
+    }
+
+    TArray<FExrLayerRequest> Layers;
+    Layers.Reserve(1 + AuxiliaryLayers.Num());
+
+    FExrLayerRequest& BeautyLayer = Layers.Emplace_GetRef();
+    BeautyLayer.Name = TEXT("Beauty");
+    BeautyLayer.PixelData = MoveTemp(PixelData);
+    BeautyLayer.bLinear = bIsLinear;
+    BeautyLayer.Precision = PixelPrecision;
+
+    for (TPair<FName, FOmniCaptureLayerPayload>& Pair : AuxiliaryLayers)
+    {
+        if (!Pair.Value.PixelData.IsValid())
+        {
+            continue;
+        }
+
+        FExrLayerRequest& Request = Layers.Emplace_GetRef();
+        Request.Name = Pair.Key.ToString();
+        Request.PixelData = MoveTemp(Pair.Value.PixelData);
+        Request.bLinear = Pair.Value.bLinear;
+        Request.Precision = (Pair.Value.Precision == EOmniCapturePixelPrecision::Unknown) ? PixelPrecision : Pair.Value.Precision;
+    }
+
+    if (bPackEXRAuxiliaryLayers && Layers.Num() > 1)
+    {
+        if (WriteCombinedEXR(FilePath, Layers))
+        {
+            return true;
+        }
+
+        UE_LOG(LogTemp, Warning, TEXT("Falling back to per-layer EXR output for %s"), *FilePath);
+    }
+
+    bool bResult = true;
+    if (Layers.Num() > 0)
+    {
+        bResult = WriteEXR(MoveTemp(Layers[0].PixelData), FilePath, Layers[0].Precision);
+    }
+
+    for (int32 Index = 1; Index < Layers.Num(); ++Index)
+    {
+        if (!Layers[Index].PixelData.IsValid())
+        {
+            continue;
+        }
+
+        const FString LayerFileName = FString::Printf(TEXT("%s_%s%s"), *LayerBaseName, *Layers[Index].Name, *LayerExtension);
+        const FString LayerPath = FPaths::Combine(LayerDirectory, LayerFileName);
+        bResult &= WriteEXR(MoveTemp(Layers[Index].PixelData), LayerPath, Layers[Index].Precision);
+    }
+
+    return bResult;
+}
+
+bool FOmniCaptureImageWriter::WriteCombinedEXR(const FString& FilePath, TArray<FExrLayerRequest>& Layers) const
+{
+    if (Layers.Num() == 0)
+    {
+        return false;
+    }
+
+    if (IsStopRequested())
+    {
+        return false;
+    }
+
+    const FIntPoint ExpectedSize = Layers[0].PixelData.IsValid() ? Layers[0].PixelData->GetSize() : FIntPoint::ZeroValue;
+    if (ExpectedSize.X <= 0 || ExpectedSize.Y <= 0)
+    {
+        return false;
+    }
+
+    const int64 PixelCount = static_cast<int64>(ExpectedSize.X) * ExpectedSize.Y;
+    if (PixelCount <= 0)
+    {
+        return false;
+    }
+
+    TArray<FPreparedExrLayer> PreparedLayers;
+    PreparedLayers.Reserve(Layers.Num());
+
+    for (FExrLayerRequest& Layer : Layers)
+    {
+        if (!Layer.PixelData.IsValid())
+        {
+            return false;
+        }
+
+        if (Layer.PixelData->GetSize() != ExpectedSize)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Skipping EXR layer '%s' due to mismatched resolution"), *Layer.Name);
+            return false;
+        }
+
+        FPreparedExrLayer& Prepared = PreparedLayers.Emplace_GetRef();
+        FTCHARToUTF8 NameUtf8(*Layer.Name);
+        Prepared.Name = std::string(NameUtf8.Length() > 0 ? NameUtf8.Get() : "");
+        Prepared.ChannelCount = 4;
+
+        const FImagePixelData* PixelData = Layer.PixelData.Get();
+        EOmniCapturePixelPrecision Precision = Layer.Precision;
+        if (Precision == EOmniCapturePixelPrecision::Unknown)
+        {
+            Precision = EOmniCapturePixelPrecision::HalfFloat;
+        }
+
+        if (const TImagePixelData<FLinearColor>* Float32Data = dynamic_cast<const TImagePixelData<FLinearColor>*>(PixelData))
+        {
+            Prepared.PixelType = OPENEXR_IMF_NAMESPACE::PixelType::FLOAT;
+            Prepared.FloatBuffer.SetNum(PixelCount * 4);
+
+            for (int64 Index = 0; Index < PixelCount; ++Index)
+            {
+                const FLinearColor& Src = Float32Data->Pixels[Index];
+                const int64 Base = Index * 4;
+                Prepared.FloatBuffer[Base + 0] = Src.R;
+                Prepared.FloatBuffer[Base + 1] = Src.G;
+                Prepared.FloatBuffer[Base + 2] = Src.B;
+                Prepared.FloatBuffer[Base + 3] = Src.A;
+            }
+        }
+        else if (const TImagePixelData<FFloat16Color>* Float16Data = dynamic_cast<const TImagePixelData<FFloat16Color>*>(PixelData))
+        {
+            Prepared.PixelType = OPENEXR_IMF_NAMESPACE::PixelType::HALF;
+            Prepared.HalfBuffer.SetNum(PixelCount * 4);
+
+            for (int64 Index = 0; Index < PixelCount; ++Index)
+            {
+                const FFloat16Color& Src = Float16Data->Pixels[Index];
+                const int64 Base = Index * 4;
+                Prepared.HalfBuffer[Base + 0] = IMATH_NAMESPACE::half(Src.R.GetFloat());
+                Prepared.HalfBuffer[Base + 1] = IMATH_NAMESPACE::half(Src.G.GetFloat());
+                Prepared.HalfBuffer[Base + 2] = IMATH_NAMESPACE::half(Src.B.GetFloat());
+                Prepared.HalfBuffer[Base + 3] = IMATH_NAMESPACE::half(Src.A.GetFloat());
+            }
+        }
+        else if (const TImagePixelData<FColor>* ColorData = dynamic_cast<const TImagePixelData<FColor>*>(PixelData))
+        {
+            Prepared.PixelType = OPENEXR_IMF_NAMESPACE::PixelType::FLOAT;
+            Prepared.FloatBuffer.SetNum(PixelCount * 4);
+
+            for (int64 Index = 0; Index < PixelCount; ++Index)
+            {
+                const FLinearColor Src = ColorData->Pixels[Index].ReinterpretAsLinear();
+                const int64 Base = Index * 4;
+                Prepared.FloatBuffer[Base + 0] = Src.R;
+                Prepared.FloatBuffer[Base + 1] = Src.G;
+                Prepared.FloatBuffer[Base + 2] = Src.B;
+                Prepared.FloatBuffer[Base + 3] = Src.A;
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Unsupported pixel payload for EXR layer '%s'"), *Layer.Name);
+            return false;
+        }
+    }
+
+    IFileManager::Get().Delete(*FilePath, false, true, false);
+
+    bool bSucceeded = false;
+
+    try
+    {
+        if (bUseEXRMultiPart)
+        {
+            TArray<OPENEXR_IMF_NAMESPACE::Header> Headers;
+            TArray<OPENEXR_IMF_NAMESPACE::FrameBuffer> FrameBuffers;
+            Headers.Reserve(PreparedLayers.Num());
+            FrameBuffers.Reserve(PreparedLayers.Num());
+
+            for (const FPreparedExrLayer& Prepared : PreparedLayers)
+            {
+                OPENEXR_IMF_NAMESPACE::Header Header(ExpectedSize.X, ExpectedSize.Y);
+                Header.compression() = ToOpenExrCompression(TargetEXRCompression);
+                if (!Prepared.Name.empty())
+                {
+                    Header.setName(Prepared.Name.c_str());
+                }
+
+                OPENEXR_IMF_NAMESPACE::FrameBuffer Buffer;
+                for (int32 ChannelIndex = 0; ChannelIndex < Prepared.ChannelCount; ++ChannelIndex)
+                {
+                    const TCHAR* ChannelSuffix = GetChannelSuffix(ChannelIndex);
+                    FTCHARToUTF8 ChannelUtf8(ChannelSuffix);
+                    Header.channels().insert(ChannelUtf8.Get(), OPENEXR_IMF_NAMESPACE::Channel(Prepared.PixelType));
+
+                    const char* BasePtr = Prepared.GetBasePointer();
+                    const int32 ComponentSize = Prepared.GetComponentSize();
+                    const size_t PixelStride = static_cast<size_t>(ComponentSize) * Prepared.ChannelCount;
+                    const size_t RowStride = PixelStride * ExpectedSize.X;
+                    const size_t ChannelOffset = static_cast<size_t>(ComponentSize) * ChannelIndex;
+
+                    Buffer.insert(ChannelUtf8.Get(), OPENEXR_IMF_NAMESPACE::Slice(Prepared.PixelType, const_cast<char*>(BasePtr) + ChannelOffset, PixelStride, RowStride));
+                }
+
+                Headers.Add(Header);
+                FrameBuffers.Add(Buffer);
+            }
+
+            OPENEXR_IMF_NAMESPACE::MultiPartOutputFile OutputFile(TCHAR_TO_UTF8(*FilePath), Headers.GetData(), Headers.Num());
+            for (int32 PartIndex = 0; PartIndex < Headers.Num(); ++PartIndex)
+            {
+                OPENEXR_IMF_NAMESPACE::OutputPart Part(OutputFile, PartIndex);
+                Part.setFrameBuffer(FrameBuffers[PartIndex]);
+                Part.writePixels(ExpectedSize.Y);
+            }
+        }
+        else
+        {
+            OPENEXR_IMF_NAMESPACE::Header Header(ExpectedSize.X, ExpectedSize.Y);
+            Header.compression() = ToOpenExrCompression(TargetEXRCompression);
+            OPENEXR_IMF_NAMESPACE::FrameBuffer FrameBuffer;
+
+            for (const FPreparedExrLayer& Prepared : PreparedLayers)
+            {
+                const std::string Prefix = Prepared.Name.empty() ? std::string() : Prepared.Name + ".";
+                for (int32 ChannelIndex = 0; ChannelIndex < Prepared.ChannelCount; ++ChannelIndex)
+                {
+                    const TCHAR* ChannelSuffix = GetChannelSuffix(ChannelIndex);
+                    FTCHARToUTF8 ChannelUtf8(ChannelSuffix);
+                    const std::string ChannelName = Prefix + ChannelUtf8.Get();
+
+                    Header.channels().insert(ChannelName.c_str(), OPENEXR_IMF_NAMESPACE::Channel(Prepared.PixelType));
+
+                    const char* BasePtr = Prepared.GetBasePointer();
+                    const int32 ComponentSize = Prepared.GetComponentSize();
+                    const size_t PixelStride = static_cast<size_t>(ComponentSize) * Prepared.ChannelCount;
+                    const size_t RowStride = PixelStride * ExpectedSize.X;
+                    const size_t ChannelOffset = static_cast<size_t>(ComponentSize) * ChannelIndex;
+
+                    FrameBuffer.insert(ChannelName.c_str(), OPENEXR_IMF_NAMESPACE::Slice(Prepared.PixelType, const_cast<char*>(BasePtr) + ChannelOffset, PixelStride, RowStride));
+                }
+            }
+
+            OPENEXR_IMF_NAMESPACE::OutputFile OutputFile(TCHAR_TO_UTF8(*FilePath), Header);
+            OutputFile.setFrameBuffer(FrameBuffer);
+            OutputFile.writePixels(ExpectedSize.Y);
+        }
+
+        bSucceeded = true;
+    }
+    catch (const std::exception& Exception)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Failed to write multi-layer EXR '%s': %s"), *FilePath, UTF8_TO_TCHAR(Exception.what()));
+    }
+
+    if (bSucceeded)
+    {
+        for (FExrLayerRequest& Layer : Layers)
+        {
+            Layer.PixelData.Reset();
+        }
+    }
+
+    return bSucceeded;
 }
 
 bool FOmniCaptureImageWriter::WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const
