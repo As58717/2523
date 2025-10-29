@@ -38,7 +38,7 @@ public class OmniCapture : ModuleRules
             "Renderer"
         });
 
-        AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib", "UElibPNG");
+        AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib", "UElibPNG", "OpenEXR", "Imath");
 
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {

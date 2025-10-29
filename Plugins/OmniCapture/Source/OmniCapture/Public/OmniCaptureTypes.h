@@ -48,6 +48,19 @@ enum class EOmniOutputFormat : uint8
 
 UENUM(BlueprintType)
 enum class EOmniCaptureImageFormat : uint8 { PNG, JPG, EXR, BMP };
+
+UENUM(BlueprintType)
+enum class EOmniCaptureEXRCompression : uint8
+{
+    None,
+    Zip,
+    Zips,
+    Piz,
+    Pxr24,
+    Dwaa,
+    Dwab,
+    Rle
+};
 UENUM(BlueprintType)
 enum class EOmniCaptureHDRPrecision : uint8
 {
@@ -198,6 +211,9 @@ struct OMNICAPTURE_API FOmniCaptureSettings
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") FString OutputFileName = TEXT("OmniCapture");
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") EOmniCaptureColorSpace ColorSpace = EOmniCaptureColorSpace::BT709;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") bool bEnableFastStart = true;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output|EXR") bool bPackEXRAuxiliaryLayers = true;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output|EXR") bool bUseEXRMultiPart = false;
+        UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output|EXR") EOmniCaptureEXRCompression EXRCompression = EOmniCaptureEXRCompression::Zip;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") bool bForceConstantFrameRate = true;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output") bool bAllowNVENCFallback = true;
         UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Output", meta = (ClampMin = 1, UIMin = 1)) int32 MaxPendingImageTasks = 8;

@@ -19,6 +19,14 @@ public:
     TArray<FOmniCaptureFrameMetadata> ConsumeCapturedFrames();
 
 private:
+    struct FExrLayerRequest
+    {
+        FString Name;
+        TUniquePtr<FImagePixelData> PixelData;
+        bool bLinear = false;
+        EOmniCapturePixelPrecision Precision = EOmniCapturePixelPrecision::Unknown;
+    };
+
     bool WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear, EOmniCapturePixelPrecision PixelPrecision) const;
     bool WritePNGRaw(const FString& FilePath, const FIntPoint& Size, const void* RawData, int64 RawSizeInBytes, ERGBFormat Format, int32 BitDepth) const;
     bool WritePNGWithRowSource(const FString& FilePath, const FIntPoint& Size, ERGBFormat Format, int32 BitDepth, TFunctionRef<void(int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)> PrepareRows) const;
@@ -34,6 +42,8 @@ private:
     bool WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const;
     bool WriteEXRFromColor(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WriteEXRInternal(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EImagePixelType PixelType) const;
+    bool WriteEXRFrame(const FString& FilePath, bool bIsLinear, TUniquePtr<FImagePixelData> PixelData, EOmniCapturePixelPrecision PixelPrecision, TMap<FName, FOmniCaptureLayerPayload>&& AuxiliaryLayers, const FString& LayerDirectory, const FString& LayerBaseName, const FString& LayerExtension) const;
+    bool WriteCombinedEXR(const FString& FilePath, TArray<FExrLayerRequest>& Layers) const;
     void RequestStop();
     bool IsStopRequested() const;
     void WaitForAvailableTaskSlot();
@@ -48,6 +58,9 @@ private:
     EOmniCaptureImageFormat TargetFormat = EOmniCaptureImageFormat::PNG;
     EOmniCapturePNGBitDepth TargetPNGBitDepth = EOmniCapturePNGBitDepth::BitDepth32;
     int32 MaxPendingTasks = 8;
+    bool bPackEXRAuxiliaryLayers = true;
+    bool bUseEXRMultiPart = false;
+    EOmniCaptureEXRCompression TargetEXRCompression = EOmniCaptureEXRCompression::Zip;
 
     TArray<FOmniCaptureFrameMetadata> CapturedMetadata;
     FCriticalSection MetadataCS;
