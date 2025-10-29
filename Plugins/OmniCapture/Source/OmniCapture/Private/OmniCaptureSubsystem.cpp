@@ -9,6 +9,7 @@
 #include "OmniCaptureRingBuffer.h"
 #include "OmniCapturePreviewActor.h"
 #include "OmniCaptureMuxer.h"
+#include "OmniCaptureSettingsValidator.h"
 
 #include "Curves/CurveFloat.h"
 #include "Engine/World.h"
@@ -189,6 +190,25 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     SetDiagnosticContext(TEXT("ValidateEnvironment"));
     AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Validating capture environment."), TEXT("ValidateEnvironment"));
     const bool bEnvironmentOk = ValidateEnvironment();
+
+    {
+        TArray<FString> CompatibilityWarnings;
+        FString CompatibilityFailure;
+        if (!FOmniCaptureSettingsValidator::ApplyCompatibilityFixups(ActiveSettings, CompatibilityWarnings, &CompatibilityFailure))
+        {
+            const FString FailureMessage = CompatibilityFailure.IsEmpty()
+                ? TEXT("Capture aborted due to incompatible projection settings.")
+                : FString::Printf(TEXT("Capture aborted due to incompatible projection settings: %s"), *CompatibilityFailure);
+            LogDiagnosticMessage(ELogVerbosity::Error, TEXT("ValidateEnvironment"), FailureMessage);
+            return;
+        }
+
+        for (const FString& Warning : CompatibilityWarnings)
+        {
+            AddWarningUnique(Warning);
+        }
+    }
+
     FString FallbackFailureReason;
     if (!ApplyFallbacks(&FallbackFailureReason))
     {
@@ -480,6 +500,21 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
 
     FOmniCaptureSettings StillSettings = InSettings;
     StillSettings.OutputFormat = EOmniOutputFormat::ImageSequence;
+
+    {
+        TArray<FString> CompatibilityWarnings;
+        FString CompatibilityFailure;
+        if (!FOmniCaptureSettingsValidator::ApplyCompatibilityFixups(StillSettings, CompatibilityWarnings, &CompatibilityFailure))
+        {
+            LogDiagnosticMessage(ELogVerbosity::Error, TEXT("StillCapture"), CompatibilityFailure.IsEmpty() ? TEXT("Still capture aborted due to incompatible projection settings.") : CompatibilityFailure);
+            return false;
+        }
+
+        for (const FString& Warning : CompatibilityWarnings)
+        {
+            AddWarningUnique(Warning);
+        }
+    }
 
     FActorSpawnParameters SpawnParams;
     SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
