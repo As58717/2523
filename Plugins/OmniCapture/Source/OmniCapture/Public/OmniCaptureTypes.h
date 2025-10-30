@@ -81,9 +81,9 @@ enum class EOmniCaptureGamma : uint8 { SRGB, Linear };
 UENUM(BlueprintType)
 enum class EOmniCapturePNGBitDepth : uint8
 {
-        BitDepth16 UMETA(DisplayName = "16-bit Color") = 0,
-        BitDepth32 UMETA(DisplayName = "32-bit Color") = 1,
-        BitDepth8 UMETA(DisplayName = "8-bit Color") = 2
+        BitDepth16 = 0 UMETA(DisplayName = "16-bit Color"),
+        BitDepth32 = 1 UMETA(DisplayName = "32-bit Color"),
+        BitDepth8 = 2 UMETA(DisplayName = "8-bit Color")
 };
 
 UENUM(BlueprintType)
