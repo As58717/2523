@@ -1,6 +1,8 @@
 #include "OmniCaptureMoviePipelineSetting.h"
 
 #include "MoviePipeline.h"
+#include "MoviePipelineSetting.h"
+#include "Misc/EngineVersionComparison.h"
 #include "OmniCaptureSubsystem.h"
 #include "Internationalization/Text.h"
 #include "Engine/World.h"
@@ -9,7 +11,11 @@
 
 UOmniCaptureMoviePipelineSetting::UOmniCaptureMoviePipelineSetting()
 {
+#if UE_VERSION_OLDER_THAN(5, 5, 0)
     bEnabled = true;
+#else
+    SetIsEnabled(true);
+#endif
 }
 
 void UOmniCaptureMoviePipelineSetting::CacheSubsystem(UMoviePipeline* InPipeline)

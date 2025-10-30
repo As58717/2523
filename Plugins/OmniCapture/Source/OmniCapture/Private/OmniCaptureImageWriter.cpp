@@ -2,7 +2,7 @@
 
 
 #include "Async/Async.h"
-#include "Async/Promise.h"
+#include "Async/Future.h"
 #include "HAL/FileManager.h"
 #include "IImageWrapperModule.h"
 #include "IImageWrapper.h"

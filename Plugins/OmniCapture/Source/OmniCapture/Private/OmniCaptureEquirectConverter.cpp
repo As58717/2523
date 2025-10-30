@@ -62,7 +62,9 @@ namespace
             return EOmniCapturePixelPrecision::FullFloat;
         case PF_FloatRGBA:
         case PF_FloatRGB:
+#if defined(PF_A16B16G16R16F)
         case PF_A16B16G16R16F:
+#endif
             return EOmniCapturePixelPrecision::HalfFloat;
         default:
             return EOmniCapturePixelPrecision::Unknown;
@@ -94,7 +96,7 @@ namespace
 
     EPixelFormat GetPixelFormatForPrecision(EOmniCapturePixelPrecision Precision)
     {
-        return Precision == EOmniCapturePixelPrecision::FullFloat ? PF_A32B32G32R32F : PF_FloatRGBA;
+        return Precision == EOmniCapturePixelPrecision::FullFloat ? PF_A32B32G32R32F : OmniCapture::GetHalfFloatPixelFormat();
     }
 
 

@@ -27,6 +27,7 @@
 #include "PixelFormat.h"
 #include "Math/UnrealMathUtility.h"
 #include "Engine/RendererSettings.h"
+#include "Misc/EngineVersionComparison.h"
 #include "DataDrivenShaderPlatformInfo.h"
 
 #if RHI_RAYTRACING
@@ -1527,11 +1528,13 @@ void UOmniCaptureSubsystem::ApplyRenderFeatureOverrides()
     {
         RayTracingFailureReason = TEXT("Hardware or RHI does not support ray tracing.");
     }
+#if UE_VERSION_OLDER_THAN(5, 5, 0)
     else if (RendererSettings && !RendererSettings->bSupportRayTracing)
     {
         bRayTracingSupported = false;
         RayTracingFailureReason = TEXT("Ray tracing disabled in project renderer settings.");
     }
+#endif
     else if (!IsRayTracingAllowed())
     {
         bRayTracingSupported = false;
@@ -1544,7 +1547,13 @@ void UOmniCaptureSubsystem::ApplyRenderFeatureOverrides()
     bool bPathTracingSupported = false;
     FString PathTracingFailureReason;
 
-    if (RendererSettings && !RendererSettings->bSupportPathTracing)
+#if UE_VERSION_OLDER_THAN(5, 5, 0)
+    const bool bProjectPathTracingEnabled = !RendererSettings || RendererSettings->bSupportPathTracing;
+#else
+    const bool bProjectPathTracingEnabled = true;
+#endif
+
+    if (!bProjectPathTracingEnabled)
     {
         PathTracingFailureReason = TEXT("Path tracing disabled in project renderer settings.");
     }
@@ -1571,7 +1580,13 @@ void UOmniCaptureSubsystem::ApplyRenderFeatureOverrides()
     bool bLumenSupported = false;
     FString LumenFailureReason;
 
-    if (RendererSettings && !RendererSettings->bSupportLumen)
+#if UE_VERSION_OLDER_THAN(5, 5, 0)
+    const bool bProjectLumenEnabled = !RendererSettings || RendererSettings->bSupportLumen;
+#else
+    const bool bProjectLumenEnabled = true;
+#endif
+
+    if (!bProjectLumenEnabled)
     {
         LumenFailureReason = TEXT("Lumen disabled in project renderer settings.");
     }
