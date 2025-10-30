@@ -37,6 +37,11 @@
     }
   ],
   "EngineVersion": "",
-  "Plugins": []
+  "Plugins": [
+    {
+      "Name": "MovieRenderPipeline",
+      "Enabled": true
+    }
+  ]
 }
 
