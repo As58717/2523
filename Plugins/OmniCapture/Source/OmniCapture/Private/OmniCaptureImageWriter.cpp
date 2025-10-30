@@ -17,8 +17,16 @@
 
 #include <exception>
 
+#ifndef WITH_OMNICAPTURE_OPENEXR
+#define WITH_OMNICAPTURE_OPENEXR 0
+#endif
+
 THIRD_PARTY_INCLUDES_START
 #include "png.h"
+THIRD_PARTY_INCLUDES_END
+
+#if WITH_OMNICAPTURE_OPENEXR
+THIRD_PARTY_INCLUDES_START
 #include "OpenEXR/ImfMultiPartOutputFile.h"
 #include "OpenEXR/ImfOutputFile.h"
 #include "OpenEXR/ImfOutputPart.h"
@@ -29,11 +37,13 @@ THIRD_PARTY_INCLUDES_START
 #include "OpenEXR/ImfNamespace.h"
 #include "Imath/half.h"
 THIRD_PARTY_INCLUDES_END
+#endif
 
 namespace
 {
     constexpr int32 DefaultJpegQuality = 85;
 
+#if WITH_OMNICAPTURE_OPENEXR
     OPENEXR_IMF_NAMESPACE::Compression ToOpenExrCompression(EOmniCaptureEXRCompression Compression)
     {
         using namespace OPENEXR_IMF_NAMESPACE;
@@ -94,6 +104,7 @@ namespace
             return PixelType == OPENEXR_IMF_NAMESPACE::PixelType::FLOAT ? sizeof(float) : sizeof(IMATH_NAMESPACE::half);
         }
     };
+#endif
 
     TSharedPtr<IImageWrapper> CreateImageWrapper(EImageFormat Format)
     {
@@ -1038,12 +1049,16 @@ bool FOmniCaptureImageWriter::WriteEXRFrame(const FString& FilePath, bool bIsLin
 
     if (bPackEXRAuxiliaryLayers && Layers.Num() > 1)
     {
+#if WITH_OMNICAPTURE_OPENEXR
         if (WriteCombinedEXR(FilePath, Layers))
         {
             return true;
         }
 
         UE_LOG(LogTemp, Warning, TEXT("Falling back to per-layer EXR output for %s"), *FilePath);
+#else
+        UE_LOG(LogTemp, Warning, TEXT("Combined EXR output is disabled because OpenEXR support was not found. Writing individual layers instead for %s."), *FilePath);
+#endif
     }
 
     bool bResult = true;
@@ -1067,6 +1082,7 @@ bool FOmniCaptureImageWriter::WriteEXRFrame(const FString& FilePath, bool bIsLin
     return bResult;
 }
 
+#if WITH_OMNICAPTURE_OPENEXR
 bool FOmniCaptureImageWriter::WriteCombinedEXR(const FString& FilePath, TArray<FExrLayerRequest>& Layers) const
 {
     if (Layers.Num() == 0)
@@ -1270,6 +1286,15 @@ bool FOmniCaptureImageWriter::WriteCombinedEXR(const FString& FilePath, TArray<F
 
     return bSucceeded;
 }
+#endif // WITH_OMNICAPTURE_OPENEXR
+
+#if !WITH_OMNICAPTURE_OPENEXR
+bool FOmniCaptureImageWriter::WriteCombinedEXR(const FString& FilePath, TArray<FExrLayerRequest>& Layers) const
+{
+    UE_LOG(LogTemp, Verbose, TEXT("Skipping combined EXR output for %s because OpenEXR support is unavailable."), *FilePath);
+    return false;
+}
+#endif
 
 bool FOmniCaptureImageWriter::WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const
 {
