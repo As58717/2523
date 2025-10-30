@@ -105,7 +105,7 @@ void AOmniCaptureRigActor::Configure(const FOmniCaptureSettings& InSettings)
 
     for (auto& Pair : LeftAuxiliaryCaptures)
     {
-        for (USceneCaptureComponent2D* Capture : Pair.Value)
+        for (USceneCaptureComponent2D* Capture : Pair.Value.CaptureComponents)
         {
             if (Capture)
             {
@@ -116,7 +116,7 @@ void AOmniCaptureRigActor::Configure(const FOmniCaptureSettings& InSettings)
 
     for (auto& Pair : RightAuxiliaryCaptures)
     {
-        for (USceneCaptureComponent2D* Capture : Pair.Value)
+        for (USceneCaptureComponent2D* Capture : Pair.Value.CaptureComponents)
         {
             if (Capture)
             {
@@ -359,7 +359,9 @@ void AOmniCaptureRigActor::ConfigureAuxiliaryTargets(EOmniCaptureEye Eye, int32 
         return;
     }
 
-    TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>& TargetMap = (Eye == EOmniCaptureEye::Left) ? const_cast<TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>&>(LeftAuxiliaryCaptures) : const_cast<TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>&>(RightAuxiliaryCaptures);
+    TMap<EOmniCaptureAuxiliaryPassType, FOmniCaptureAuxiliaryCaptureArray>& TargetMap = (Eye == EOmniCaptureEye::Left)
+        ? const_cast<TMap<EOmniCaptureAuxiliaryPassType, FOmniCaptureAuxiliaryCaptureArray>&>(LeftAuxiliaryCaptures)
+        : const_cast<TMap<EOmniCaptureAuxiliaryPassType, FOmniCaptureAuxiliaryCaptureArray>&>(RightAuxiliaryCaptures);
 
     for (EOmniCaptureAuxiliaryPassType Pass : CachedSettings.AuxiliaryPasses)
     {
@@ -368,7 +370,7 @@ void AOmniCaptureRigActor::ConfigureAuxiliaryTargets(EOmniCaptureEye Eye, int32 
             continue;
         }
 
-        TArray<USceneCaptureComponent2D*>& CaptureArray = TargetMap.FindOrAdd(Pass);
+        TArray<USceneCaptureComponent2D*>& CaptureArray = TargetMap.FindOrAdd(Pass).CaptureComponents;
         CaptureArray.SetNum(FaceCount);
 
         for (int32 FaceIndex = 0; FaceIndex < FaceCount; ++FaceIndex)
@@ -416,13 +418,13 @@ void AOmniCaptureRigActor::CaptureEye(EOmniCaptureEye Eye, FOmniEyeCapture& OutC
         }
     }
 
-    const TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>* AuxMap = Eye == EOmniCaptureEye::Left ? &LeftAuxiliaryCaptures : &RightAuxiliaryCaptures;
+    const TMap<EOmniCaptureAuxiliaryPassType, FOmniCaptureAuxiliaryCaptureArray>* AuxMap = Eye == EOmniCaptureEye::Left ? &LeftAuxiliaryCaptures : &RightAuxiliaryCaptures;
     if (AuxMap)
     {
-        for (const TPair<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>>& Pair : *AuxMap)
+        for (const TPair<EOmniCaptureAuxiliaryPassType, FOmniCaptureAuxiliaryCaptureArray>& Pair : *AuxMap)
         {
             const EOmniCaptureAuxiliaryPassType PassType = Pair.Key;
-            const TArray<USceneCaptureComponent2D*>& AuxCaptures = Pair.Value;
+            const TArray<USceneCaptureComponent2D*>& AuxCaptures = Pair.Value.CaptureComponents;
 
             for (int32 FaceIndex = 0; FaceIndex < AuxCaptures.Num(); ++FaceIndex)
             {

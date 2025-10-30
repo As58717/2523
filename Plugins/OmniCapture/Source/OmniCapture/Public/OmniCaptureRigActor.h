@@ -16,10 +16,25 @@ enum class EOmniCaptureEye : uint8
     Right
 };
 
+USTRUCT()
 struct FOmniCaptureFaceResources
 {
+    GENERATED_BODY()
+
+    UPROPERTY()
     UTextureRenderTarget2D* RenderTarget = nullptr;
+
+    UPROPERTY()
     TMap<EOmniCaptureAuxiliaryPassType, UTextureRenderTarget2D*> AuxiliaryTargets;
+};
+
+USTRUCT()
+struct FOmniCaptureAuxiliaryCaptureArray
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    TArray<USceneCaptureComponent2D*> CaptureComponents;
 };
 
 struct FOmniEyeCapture
@@ -75,10 +90,10 @@ private:
     TArray<USceneCaptureComponent2D*> RightEyeCaptures;
 
     UPROPERTY()
-    TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>> LeftAuxiliaryCaptures;
+    TMap<EOmniCaptureAuxiliaryPassType, FOmniCaptureAuxiliaryCaptureArray> LeftAuxiliaryCaptures;
 
     UPROPERTY()
-    TMap<EOmniCaptureAuxiliaryPassType, TArray<USceneCaptureComponent2D*>> RightAuxiliaryCaptures;
+    TMap<EOmniCaptureAuxiliaryPassType, FOmniCaptureAuxiliaryCaptureArray> RightAuxiliaryCaptures;
 
     UPROPERTY(Transient)
     TArray<UTextureRenderTarget2D*> RenderTargets;
