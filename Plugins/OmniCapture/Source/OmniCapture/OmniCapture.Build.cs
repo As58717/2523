@@ -1,5 +1,7 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using UnrealBuildTool;
 
 public class OmniCapture : ModuleRules
@@ -43,37 +45,26 @@ public class OmniCapture : ModuleRules
         AddEngineThirdPartyPrivateStaticDependencies(Target, "zlib", "UElibPNG");
 
         bool bHasOpenEXR = false;
-        List<string> OpenExrCandidates = new List<string>
-        {
-            Path.Combine(Target.UEThirdPartySourceDirectory, "OpenEXR"),
-            Path.Combine(Target.UEThirdPartySourceDirectory, "OpenExr"),
-            Path.Combine(Target.UEThirdPartySourceDirectory, "OpenEXR-3"),
-        };
+        HashSet<string> OpenExrModules = new HashSet<string>();
+        HashSet<string> ImathModules = new HashSet<string>();
 
-        if (Directory.Exists(Target.UEThirdPartySourceDirectory))
+        string thirdPartyDirectory = Target.UEThirdPartySourceDirectory;
+        if (!string.IsNullOrEmpty(thirdPartyDirectory) && Directory.Exists(thirdPartyDirectory))
         {
-            OpenExrCandidates.AddRange(Directory.GetDirectories(Target.UEThirdPartySourceDirectory, "OpenEXR*", SearchOption.TopDirectoryOnly));
-            OpenExrCandidates.AddRange(Directory.GetDirectories(Target.UEThirdPartySourceDirectory, "OpenExr*", SearchOption.TopDirectoryOnly));
+            CollectThirdPartyModules(thirdPartyDirectory, "OpenEXR", OpenExrModules);
+            CollectThirdPartyModules(thirdPartyDirectory, "OpenExr", OpenExrModules);
+            CollectThirdPartyModules(thirdPartyDirectory, "Imath", ImathModules);
         }
 
-        foreach (string Candidate in OpenExrCandidates)
+        if (OpenExrModules.Count > 0)
         {
-            if (!Directory.Exists(Candidate))
-            {
-                continue;
-            }
+            bHasOpenEXR = true;
+            AddEngineThirdPartyPrivateStaticDependencies(Target, OpenExrModules.ToArray());
 
-            if (Directory.GetFiles(Candidate, "*OpenEXR*.Build.cs", SearchOption.AllDirectories).Length > 0 ||
-                Directory.GetFiles(Candidate, "*OpenExr*.Build.cs", SearchOption.AllDirectories).Length > 0)
+            if (ImathModules.Count > 0)
             {
-                bHasOpenEXR = true;
-                break;
+                AddEngineThirdPartyPrivateStaticDependencies(Target, ImathModules.ToArray());
             }
-        }
-
-        if (bHasOpenEXR)
-        {
-            AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenEXR", "Imath");
         }
 
         PrivateDefinitions.Add($"WITH_OMNICAPTURE_OPENEXR={(bHasOpenEXR ? 1 : 0)}");
@@ -95,5 +86,30 @@ public class OmniCapture : ModuleRules
             PrivateDefinitions.Add("WITH_OMNI_NVENC=0");
         }
     }
-}
 
+    private static void CollectThirdPartyModules(string thirdPartyDirectory, string filePrefix, HashSet<string> moduleNames)
+    {
+        foreach (string buildFile in Directory.GetFiles(thirdPartyDirectory, $"{filePrefix}*.Build.cs", SearchOption.AllDirectories))
+        {
+            string moduleName = ExtractModuleName(buildFile);
+            if (!string.IsNullOrEmpty(moduleName))
+            {
+                moduleNames.Add(moduleName);
+            }
+        }
+    }
+
+    private static string ExtractModuleName(string buildFile)
+    {
+        foreach (string line in File.ReadLines(buildFile))
+        {
+            Match match = Regex.Match(line, @"^\s*class\s+([A-Za-z0-9_]+)\s*:\s*ModuleRules");
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+        }
+
+        return string.Empty;
+    }
+}
