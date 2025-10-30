@@ -26,6 +26,15 @@ struct FOmniCaptureFaceResources
 
     UPROPERTY()
     TMap<EOmniCaptureAuxiliaryPassType, UTextureRenderTarget2D*> AuxiliaryTargets;
+
+    UTextureRenderTarget2D* GetAuxiliaryRenderTarget(EOmniCaptureAuxiliaryPassType PassType) const
+    {
+        if (const UTextureRenderTarget2D* const* FoundTarget = AuxiliaryTargets.Find(PassType))
+        {
+            return *FoundTarget;
+        }
+        return nullptr;
+    }
 };
 
 USTRUCT()

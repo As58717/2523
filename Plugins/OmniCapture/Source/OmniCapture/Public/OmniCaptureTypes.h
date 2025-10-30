@@ -9,6 +9,18 @@
 #include "Misc/DateTime.h"
 #include "OmniCaptureTypes.generated.h"
 
+namespace OmniCapture
+{
+    static FORCEINLINE EPixelFormat GetHalfFloatPixelFormat()
+    {
+#if defined(PF_A16B16G16R16F)
+        return PF_A16B16G16R16F;
+#else
+        return PF_FloatRGBA;
+#endif
+    }
+}
+
 class UCurveFloat;
 
 UENUM(BlueprintType)

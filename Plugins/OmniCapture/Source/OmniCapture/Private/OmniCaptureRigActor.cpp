@@ -32,7 +32,7 @@ namespace
             return true;
         case EOmniCaptureAuxiliaryPassType::WorldNormal:
             OutConfig.CaptureSource = ESceneCaptureSource::SCS_Normal;
-            OutConfig.PixelFormat = PF_A16B16G16R16F;
+            OutConfig.PixelFormat = OmniCapture::GetHalfFloatPixelFormat();
             OutConfig.ClearColor = FLinearColor::Black;
             OutConfig.bLinearTarget = true;
             return true;
@@ -42,6 +42,7 @@ namespace
             OutConfig.ClearColor = FLinearColor::Black;
             OutConfig.bLinearTarget = true;
             return true;
+#if !UE_VERSION_AT_LEAST(5, 5, 0)
         case EOmniCaptureAuxiliaryPassType::Roughness:
             OutConfig.CaptureSource = ESceneCaptureSource::SCS_Roughness;
             OutConfig.PixelFormat = PF_R16F;
@@ -54,6 +55,11 @@ namespace
             OutConfig.ClearColor = FLinearColor::White;
             OutConfig.bLinearTarget = true;
             return true;
+#else
+        case EOmniCaptureAuxiliaryPassType::Roughness:
+        case EOmniCaptureAuxiliaryPassType::AmbientOcclusion:
+            return false;
+#endif
         case EOmniCaptureAuxiliaryPassType::MotionVector:
             OutConfig.CaptureSource = ESceneCaptureSource::SCS_FinalColorHDR;
             OutConfig.PixelFormat = PF_FloatRGBA;
@@ -141,6 +147,9 @@ void AOmniCaptureRigActor::Configure(const FOmniCaptureSettings& InSettings)
 
     const bool bPlanar = CachedSettings.IsPlanar();
     const int32 FaceCount = bPlanar ? 1 : CubemapFaceCount;
+    const FIntPoint TargetSize = bPlanar
+        ? CachedSettings.GetPlanarResolution()
+        : FIntPoint(CachedSettings.Resolution, CachedSettings.Resolution);
 
     const float IPDHalf = CachedSettings.Mode == EOmniCaptureMode::Stereo
         ? CachedSettings.InterPupillaryDistanceCm * 0.5f
@@ -307,7 +316,8 @@ USceneCaptureComponent2D* AOmniCaptureRigActor::CreateAuxiliaryCaptureComponent(
         return nullptr;
     }
 
-    USceneCaptureComponent2D* CaptureComponent = NewObject<USceneCaptureComponent2D>(this, *ComponentName);
+    AOmniCaptureRigActor* MutableThis = const_cast<AOmniCaptureRigActor*>(this);
+    USceneCaptureComponent2D* CaptureComponent = NewObject<USceneCaptureComponent2D>(MutableThis, *ComponentName);
     CaptureComponent->SetRelativeLocation(FVector::ZeroVector);
     CaptureComponent->FOVAngle = 90.0f;
     CaptureComponent->CaptureSource = Config.CaptureSource;
