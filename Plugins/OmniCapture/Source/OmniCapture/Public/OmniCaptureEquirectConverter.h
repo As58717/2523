@@ -17,6 +17,7 @@ struct FOmniCaptureEquirectResult
     bool bIsLinear = false;
     bool bUsedCPUFallback = false;
     EOmniCapturePixelPrecision PixelPrecision = EOmniCapturePixelPrecision::Unknown;
+    EOmniCapturePixelDataType PixelDataType = EOmniCapturePixelDataType::Unknown;
     TRefCountPtr<IPooledRenderTarget> OutputTarget;
     TRefCountPtr<IPooledRenderTarget> GPUSource;
     FTextureRHIRef Texture;
