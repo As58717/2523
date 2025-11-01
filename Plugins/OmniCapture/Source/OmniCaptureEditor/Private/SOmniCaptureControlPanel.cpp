@@ -1749,13 +1749,13 @@ UOmniCaptureSubsystem* SOmniCaptureControlPanel::GetSubsystem() const
 
 FTransform SOmniCaptureControlPanel::GetEditorViewportCameraTransform() const
 {
-    FEditorViewportClient* ViewportClient = nullptr;
+    FLevelEditorViewportClient* ViewportClient = nullptr;
 
     if (GEditor)
     {
         if (FViewport* ActiveViewport = GEditor->GetActiveViewport())
         {
-            for (FEditorViewportClient* Candidate : GEditor->GetLevelViewportClients())
+            for (FLevelEditorViewportClient* Candidate : GEditor->GetLevelViewportClients())
             {
                 if (Candidate && Candidate->Viewport == ActiveViewport)
                 {
