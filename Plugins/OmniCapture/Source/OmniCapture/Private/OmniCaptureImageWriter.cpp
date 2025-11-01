@@ -1369,6 +1369,22 @@ bool FOmniCaptureImageWriter::WriteEXRInternal(TUniquePtr<FImagePixelData> Pixel
         return false;
     }
 
+#if UE_VERSION_AT_LEAST(5, 5, 0)
+#if WITH_OMNICAPTURE_OPENEXR
+    TArray<FExrLayerRequest> Layers;
+    FExrLayerRequest& Layer = Layers.Emplace_GetRef();
+    Layer.PixelData = MoveTemp(PixelData);
+    Layer.bLinear = true;
+    Layer.Precision = (PixelType == EImagePixelType::Float32)
+        ? EOmniCapturePixelPrecision::FullFloat
+        : EOmniCapturePixelPrecision::HalfFloat;
+
+    return WriteCombinedEXR(FilePath, Layers);
+#else
+    UE_LOG(LogTemp, Warning, TEXT("EXR writing is unavailable: OpenEXR support is required when building against UE 5.5 or newer."));
+    return false;
+#endif // WITH_OMNICAPTURE_OPENEXR
+#else
     IImageWriteQueueModule& ImageWriteModule = FModuleManager::LoadModuleChecked<IImageWriteQueueModule>(TEXT("ImageWriteQueue"));
     IImageWriteQueue& WriteQueue = ImageWriteModule.GetWriteQueue();
 
@@ -1389,6 +1405,7 @@ bool FOmniCaptureImageWriter::WriteEXRInternal(TUniquePtr<FImagePixelData> Pixel
 
     WriteQueue.Enqueue(MoveTemp(Task));
     return CompletionFuture.Get();
+#endif // UE_VERSION_AT_LEAST(5, 5, 0)
 }
 
 void FOmniCaptureImageWriter::RequestStop()

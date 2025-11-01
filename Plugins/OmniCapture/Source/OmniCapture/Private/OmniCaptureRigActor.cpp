@@ -6,6 +6,7 @@
 #include "UObject/Package.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "OmniCaptureTypes.h"  // 增加头文件
+#include "Misc/EngineVersionComparison.h"
 #include "UObject/UnrealType.h"
 
 namespace
