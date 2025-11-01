@@ -1749,19 +1749,33 @@ UOmniCaptureSubsystem* SOmniCaptureControlPanel::GetSubsystem() const
 
 FTransform SOmniCaptureControlPanel::GetEditorViewportCameraTransform() const
 {
-    if (!GEditor)
+    FEditorViewportClient* ViewportClient = nullptr;
+
+    if (GEditor)
     {
-        return FTransform::Identity;
+        if (FViewport* ActiveViewport = GEditor->GetActiveViewport())
+        {
+            for (FEditorViewportClient* Candidate : GEditor->GetLevelViewportClients())
+            {
+                if (Candidate && Candidate->Viewport == ActiveViewport)
+                {
+                    ViewportClient = Candidate;
+                    break;
+                }
+            }
+        }
     }
 
-    if (FViewport* ActiveViewport = GEditor->GetActiveViewport())
+    if (!ViewportClient)
     {
-        if (FEditorViewportClient* ViewportClient = Cast<FEditorViewportClient>(ActiveViewport->GetClient()))
-        {
-            const FVector Location = ViewportClient->GetViewLocation();
-            const FRotator Rotation = ViewportClient->GetViewRotation();
-            return FTransform(Rotation, Location);
-        }
+        ViewportClient = GCurrentLevelEditingViewportClient;
+    }
+
+    if (ViewportClient)
+    {
+        const FVector Location = ViewportClient->GetViewLocation();
+        const FRotator Rotation = ViewportClient->GetViewRotation();
+        return FTransform(Rotation, Location);
     }
 
     return FTransform::Identity;
