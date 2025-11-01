@@ -8,8 +8,8 @@
 #include "OmniCaptureNVENCEncoder.h"
 #include "OmniCaptureMuxer.h"
 #include "Logging/LogVerbosity.h"
-#include "OmniCaptureSubsystem.generated.h"
 #include "Templates/Optional.h"
+#include "OmniCaptureSubsystem.generated.h"
 
 class AOmniCaptureRigActor;
 class AOmniCaptureDirectorActor;
