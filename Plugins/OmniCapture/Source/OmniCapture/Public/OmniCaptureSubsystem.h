@@ -9,6 +9,7 @@
 #include "OmniCaptureMuxer.h"
 #include "Logging/LogVerbosity.h"
 #include "OmniCaptureSubsystem.generated.h"
+#include "Templates/Optional.h"
 
 class AOmniCaptureRigActor;
 class AOmniCaptureDirectorActor;
@@ -104,6 +105,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "OmniCapture|Diagnostics")
     FString GetLastErrorMessage() const { return LastErrorMessage; }
 
+    void SetPendingRigTransform(const FTransform& InTransform);
+
 private:
     void CreateRig();
     void DestroyRig();
@@ -149,6 +152,7 @@ private:
     void AppendDiagnosticFromVerbosity(ELogVerbosity::Type Verbosity, const FString& Message, const FString& StepOverride = FString());
     void LogDiagnosticMessage(ELogVerbosity::Type Verbosity, const FString& StepName, const FString& Message);
     FString GetActiveDiagnosticStep() const { return CurrentDiagnosticStep; }
+    void ApplyRigTransform(AOmniCaptureRigActor* Rig);
 
 private:
     friend class AOmniCaptureDirectorActor;
@@ -201,6 +205,9 @@ private:
     FString LastStillImagePath;
     FString BaseOutputDirectory;
     FString BaseOutputFileName;
+
+    TOptional<FTransform> PendingRigTransform;
+    FTransform LastRigTransform = FTransform::Identity;
 
     TArray<FString> ActiveWarnings;
     FOmniCaptureRingBufferStats LatestRingBufferStats;

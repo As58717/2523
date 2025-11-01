@@ -110,6 +110,8 @@ private:
     void UpdatePreviewTextureDisplay();
     void RefreshDiagnosticLog();
 
+    FTransform GetEditorViewportCameraTransform() const;
+
     void ModifyCaptureSettings(TFunctionRef<void(FOmniCaptureSettings&)> Mutator);
     FOmniCaptureSettings GetSettingsSnapshot() const;
     void ApplyVRMode(bool bVR180);
