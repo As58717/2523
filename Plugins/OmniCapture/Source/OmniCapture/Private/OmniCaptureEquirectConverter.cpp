@@ -259,7 +259,13 @@ namespace
         OutFace.Pixels.Reset();
         OutFace.Precision = PixelPrecisionFromFormat(RenderTarget->GetFormat());
 
-        FReadSurfaceDataFlags Flags(RCM_MinMax);
+        // Use the standard UNorm readback mode instead of the Min/Max resolve
+        // path.  RCM_MinMax performs additional math on the HDR buffer which
+        // skews the colour channels when we subsequently treat the data as
+        // regular colour pixels.  That manifested as a visible green tint in
+        // 2D captures.  RCM_UNorm leaves the pixel values untouched so that
+        // our later linear → sRGB conversions behave correctly.
+        FReadSurfaceDataFlags Flags(RCM_UNorm);
         Flags.SetLinearToGamma(false);
 
         if (OutFace.Precision == EOmniCapturePixelPrecision::FullFloat)
