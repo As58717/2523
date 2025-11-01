@@ -535,6 +535,7 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
     }
 
     TempRig->Configure(StillSettings);
+    ApplyRigTransform(TempRig);
 
     FOmniEyeCapture LeftEye;
     FOmniEyeCapture RightEye;
@@ -752,6 +753,12 @@ void UOmniCaptureSubsystem::SetPreviewVisualizationMode(EOmniCapturePreviewView 
     LastPreviewUpdateTime = 0.0;
 }
 
+void UOmniCaptureSubsystem::SetPendingRigTransform(const FTransform& InTransform)
+{
+    PendingRigTransform = InTransform;
+    LastRigTransform = InTransform;
+}
+
 void UOmniCaptureSubsystem::CreateRig()
 {
     DestroyRig();
@@ -768,7 +775,27 @@ void UOmniCaptureSubsystem::CreateRig()
     if (AOmniCaptureRigActor* NewRig = World->SpawnActor<AOmniCaptureRigActor>(SpawnParams))
     {
         NewRig->Configure(ActiveSettings);
+        ApplyRigTransform(NewRig);
         RigActor = NewRig;
+    }
+}
+
+void UOmniCaptureSubsystem::ApplyRigTransform(AOmniCaptureRigActor* Rig)
+{
+    if (!Rig)
+    {
+        return;
+    }
+
+    if (PendingRigTransform.IsSet())
+    {
+        Rig->SetActorTransform(PendingRigTransform.GetValue());
+        LastRigTransform = PendingRigTransform.GetValue();
+        PendingRigTransform.Reset();
+    }
+    else
+    {
+        Rig->SetActorTransform(LastRigTransform);
     }
 }
 

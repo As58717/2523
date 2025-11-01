@@ -2,6 +2,7 @@
 
 #include "DesktopPlatformModule.h"
 #include "Editor.h"
+#include "EditorViewportClient.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
@@ -334,6 +335,10 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 SNew(SCheckBox)
                 .IsChecked(this, &SOmniCaptureControlPanel::GetVRModeCheckState, false)
                 .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleVRModeChanged, false)
+                .IsEnabled_Lambda([this]()
+                {
+                    return !GetSettingsSnapshot().IsPlanar();
+                })
                 .Content()
                 [
                     SNew(STextBlock)
@@ -346,6 +351,10 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 SNew(SCheckBox)
                 .IsChecked(this, &SOmniCaptureControlPanel::GetVRModeCheckState, true)
                 .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleVRModeChanged, true)
+                .IsEnabled_Lambda([this]()
+                {
+                    return !GetSettingsSnapshot().IsPlanar();
+                })
                 .Content()
                 [
                     SNew(STextBlock)
@@ -365,6 +374,10 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 SNew(SCheckBox)
                 .IsChecked(this, &SOmniCaptureControlPanel::GetStereoModeCheckState, false)
                 .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleStereoModeChanged, false)
+                .IsEnabled_Lambda([this]()
+                {
+                    return !GetSettingsSnapshot().IsPlanar();
+                })
                 .Content()
                 [
                     SNew(STextBlock)
@@ -377,6 +390,10 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 SNew(SCheckBox)
                 .IsChecked(this, &SOmniCaptureControlPanel::GetStereoModeCheckState, true)
                 .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleStereoModeChanged, true)
+                .IsEnabled_Lambda([this]()
+                {
+                    return !GetSettingsSnapshot().IsPlanar();
+                })
                 .Content()
                 [
                     SNew(STextBlock)
@@ -1517,6 +1534,7 @@ FReply SOmniCaptureControlPanel::OnStartCapture()
 
     if (UOmniCaptureSubsystem* Subsystem = GetSubsystem())
     {
+        Subsystem->SetPendingRigTransform(GetEditorViewportCameraTransform());
         Subsystem->BeginCapture(SettingsObject->CaptureSettings);
     }
 
@@ -1532,6 +1550,7 @@ FReply SOmniCaptureControlPanel::OnCaptureStill()
 
     if (UOmniCaptureSubsystem* Subsystem = GetSubsystem())
     {
+        Subsystem->SetPendingRigTransform(GetEditorViewportCameraTransform());
         FString OutputPath;
         Subsystem->CapturePanoramaStill(SettingsObject->CaptureSettings, OutputPath);
     }
@@ -1725,6 +1744,26 @@ UOmniCaptureSubsystem* SOmniCaptureControlPanel::GetSubsystem() const
     const FWorldContext& WorldContext = GEditor->GetEditorWorldContext();
     UWorld* World = WorldContext.World();
     return World ? World->GetSubsystem<UOmniCaptureSubsystem>() : nullptr;
+}
+
+FTransform SOmniCaptureControlPanel::GetEditorViewportCameraTransform() const
+{
+    if (!GEditor)
+    {
+        return FTransform::Identity;
+    }
+
+    if (FViewport* ActiveViewport = GEditor->GetActiveViewport())
+    {
+        if (FEditorViewportClient* ViewportClient = ActiveViewport->GetClient())
+        {
+            const FVector Location = ViewportClient->GetViewLocation();
+            const FRotator Rotation = ViewportClient->GetViewRotation();
+            return FTransform(Rotation, Location);
+        }
+    }
+
+    return FTransform::Identity;
 }
 
 EActiveTimerReturnType SOmniCaptureControlPanel::HandleActiveTimer(double InCurrentTime, float InDeltaTime)
