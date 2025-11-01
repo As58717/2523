@@ -31,7 +31,7 @@ struct FOmniCaptureFaceResources
     {
         if (const UTextureRenderTarget2D* const* FoundTarget = AuxiliaryTargets.Find(PassType))
         {
-            return *FoundTarget;
+            return const_cast<UTextureRenderTarget2D*>(*FoundTarget);
         }
         return nullptr;
     }
