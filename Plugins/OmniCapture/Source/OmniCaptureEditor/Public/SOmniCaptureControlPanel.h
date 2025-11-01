@@ -6,6 +6,8 @@
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Text/STextBlock.h"
+
+class SMultiLineEditableTextBox;
 #include "Widgets/Input/SComboBox.h"
 #include "OmniCaptureOptional.h"
 #include "OmniCaptureTypes.h"
@@ -245,17 +247,17 @@ private:
 private:
     TWeakObjectPtr<UOmniCaptureEditorSettings> SettingsObject;
     TSharedPtr<IDetailsView> SettingsView;
-    TSharedPtr<STextBlock> StatusTextBlock;
-    TSharedPtr<STextBlock> ActiveConfigTextBlock;
-    TSharedPtr<STextBlock> RingBufferTextBlock;
-    TSharedPtr<STextBlock> AudioTextBlock;
-    TSharedPtr<STextBlock> FrameRateTextBlock;
-    TSharedPtr<STextBlock> LastStillTextBlock;
-    TSharedPtr<STextBlock> OutputDirectoryTextBlock;
-    TSharedPtr<STextBlock> DerivedPerEyeTextBlock;
-    TSharedPtr<STextBlock> DerivedOutputTextBlock;
-    TSharedPtr<STextBlock> DerivedFOVTextBlock;
-    TSharedPtr<STextBlock> EncoderAlignmentTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> StatusTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> ActiveConfigTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> RingBufferTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> AudioTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> FrameRateTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> LastStillTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> OutputDirectoryTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> DerivedPerEyeTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> DerivedOutputTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> DerivedFOVTextBlock;
+    TSharedPtr<SMultiLineEditableTextBox> EncoderAlignmentTextBlock;
     TArray<TSharedPtr<FString>> WarningItems;
     TSharedPtr<SListView<TSharedPtr<FString>>> WarningListView;
     TArray<TSharedPtr<FDiagnosticListItem>> DiagnosticItems;

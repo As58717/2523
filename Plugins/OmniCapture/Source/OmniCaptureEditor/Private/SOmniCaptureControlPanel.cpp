@@ -31,6 +31,7 @@
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Input/SMultiLineEditableTextBox.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Images/SImage.h"
@@ -193,11 +194,33 @@ namespace
 
         return LOCTEXT("LayoutMono", "Mono");
     }
+
+    TSharedRef<SMultiLineEditableTextBox> MakeReadOnlyTextBox(const FText& InText, bool bWrapText = false)
+    {
+        return SNew(SMultiLineEditableTextBox)
+            .Text(InText)
+            .IsReadOnly(true)
+            .AlwaysShowScrollbars(false)
+            .AutoWrapText(bWrapText)
+            .AllowContextMenu(true)
+            .ClearKeyboardFocusOnCommit(false)
+            .RevertTextOnEscape(false)
+            .SelectAllTextWhenFocused(false)
+            .BackgroundColor(FLinearColor::Transparent)
+            .ReadOnlyForegroundColor(FSlateColor::UseForeground());
+    }
 }
 
 void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
 {
     UOmniCaptureEditorSettings* Settings = GetMutableDefault<UOmniCaptureEditorSettings>();
+
+    auto CreateDisplayText = [](TSharedPtr<SMultiLineEditableTextBox>& Target, const FText& DefaultText, bool bWrapText = false)
+    {
+        TSharedRef<SMultiLineEditableTextBox> Widget = MakeReadOnlyTextBox(DefaultText, bWrapText);
+        Target = Widget;
+        return Widget;
+    };
     SettingsObject = Settings;
 
     FPropertyEditorModule& PropertyEditor = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
@@ -660,26 +683,22 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
         .AutoHeight()
         .Padding(0.f, 6.f, 0.f, 0.f)
         [
-            SAssignNew(DerivedPerEyeTextBlock, STextBlock)
-            .Text(FText::GetEmpty())
+            CreateDisplayText(DerivedPerEyeTextBlock, FText::GetEmpty())
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
         [
-            SAssignNew(DerivedOutputTextBlock, STextBlock)
-            .Text(FText::GetEmpty())
+            CreateDisplayText(DerivedOutputTextBlock, FText::GetEmpty())
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
         [
-            SAssignNew(DerivedFOVTextBlock, STextBlock)
-            .Text(FText::GetEmpty())
+            CreateDisplayText(DerivedFOVTextBlock, FText::GetEmpty())
         ]
         + SVerticalBox::Slot()
         .AutoHeight()
         [
-            SAssignNew(EncoderAlignmentTextBlock, STextBlock)
-            .Text(FText::GetEmpty())
+            CreateDisplayText(EncoderAlignmentTextBlock, FText::GetEmpty())
         ]
     );
 
@@ -1334,20 +1353,17 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             + SVerticalBox::Slot()
             .AutoHeight()
             [
-                SAssignNew(StatusTextBlock, STextBlock)
-                .Text(LOCTEXT("StatusIdle", "Status: Idle"))
+                CreateDisplayText(StatusTextBlock, LOCTEXT("StatusIdle", "Status: Idle"))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
             [
-                SAssignNew(ActiveConfigTextBlock, STextBlock)
-                .Text(LOCTEXT("ConfigInactive", "Codec: - | Format: - | Zero Copy: -"))
+                CreateDisplayText(ActiveConfigTextBlock, LOCTEXT("ConfigInactive", "Codec: - | Format: - | Zero Copy: -"))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
             [
-                SAssignNew(LastStillTextBlock, STextBlock)
-                .Text(LOCTEXT("LastStillInactive", "Last Still: -"))
+                CreateDisplayText(LastStillTextBlock, LOCTEXT("LastStillInactive", "Last Still: -"))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -1398,28 +1414,23 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 .FillWidth(1.f)
                 .VAlign(VAlign_Center)
                 [
-                    SAssignNew(OutputDirectoryTextBlock, STextBlock)
-                    .Text(LOCTEXT("OutputDirectoryInactive", "Output Folder: -"))
-                    .AutoWrapText(true)
+                    CreateDisplayText(OutputDirectoryTextBlock, LOCTEXT("OutputDirectoryInactive", "Output Folder: -"), true)
                 ]
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
             [
-                SAssignNew(FrameRateTextBlock, STextBlock)
-                .Text(LOCTEXT("FrameRateInactive", "Frame Rate: 0.00 FPS"))
+                CreateDisplayText(FrameRateTextBlock, LOCTEXT("FrameRateInactive", "Frame Rate: 0.00 FPS"))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
             [
-                SAssignNew(RingBufferTextBlock, STextBlock)
-                .Text(LOCTEXT("RingBufferStats", "Ring Buffer: Pending 0 | Dropped 0 | Blocked 0"))
+                CreateDisplayText(RingBufferTextBlock, LOCTEXT("RingBufferStats", "Ring Buffer: Pending 0 | Dropped 0 | Blocked 0"))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
             [
-                SAssignNew(AudioTextBlock, STextBlock)
-                .Text(LOCTEXT("AudioStats", "Audio Drift: 0 ms"))
+                CreateDisplayText(AudioTextBlock, LOCTEXT("AudioStats", "Audio Drift: 0 ms"))
             ]
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -2020,8 +2031,7 @@ TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateWarningRow(TSharedPtr<FS
 {
     return SNew(STableRow<TSharedPtr<FString>>, OwnerTable)
         [
-            SNew(STextBlock)
-            .Text(Item.IsValid() ? FText::FromString(*Item) : FText::GetEmpty())
+            MakeReadOnlyTextBox(Item.IsValid() ? FText::FromString(*Item) : FText::GetEmpty(), true)
         ];
 }
 
@@ -2111,6 +2121,8 @@ TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateDiagnosticRow(TSharedPtr
     }
 
     const FSlateColor LevelColor = GetDiagnosticLevelColor(Item->Level);
+    TSharedRef<SMultiLineEditableTextBox> MessageWidget = MakeReadOnlyTextBox(Item->Message, true);
+    MessageWidget->SetForegroundColor(LevelColor);
 
     return SNew(STableRow<TSharedPtr<FDiagnosticListItem>>, OwnerTable)
         [
@@ -2142,10 +2154,37 @@ TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateDiagnosticRow(TSharedPtr
             + SHorizontalBox::Slot()
             .FillWidth(1.f)
             [
-                SNew(STextBlock)
-                .Text(Item->Message)
-                .ColorAndOpacity(LevelColor)
-                .AutoWrapText(true)
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .FillWidth(1.f)
+                [
+                    MessageWidget
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Top)
+                .Padding(4.f, 0.f, 0.f, 0.f)
+                [
+                    SNew(SButton)
+                    .OnClicked_Lambda([Item]()
+                    {
+                        if (Item.IsValid())
+                        {
+                            const FString Combined = FString::Printf(TEXT("%s %s %s %s"),
+                                *Item->Timestamp.ToString(),
+                                *Item->RelativeTime.ToString(),
+                                *Item->Step.ToString(),
+                                *Item->Message.ToString());
+                            FSlateApplication::Get().SetClipboardText(Combined);
+                        }
+                        return FReply::Handled();
+                    })
+                    .ToolTipText(LOCTEXT("CopyDiagnosticTooltip", "Copy diagnostic entry to clipboard"))
+                    [
+                        SNew(STextBlock)
+                        .Text(LOCTEXT("CopyDiagnosticButton", "Copy"))
+                    ]
+                ]
             ]
         ];
 }
