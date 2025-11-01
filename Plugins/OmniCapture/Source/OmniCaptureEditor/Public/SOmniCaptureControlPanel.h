@@ -7,6 +7,7 @@
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SComboBox.h"
+#include "OmniCaptureOptional.h"
 #include "OmniCaptureTypes.h"
 
 template <typename EnumType>
