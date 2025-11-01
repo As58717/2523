@@ -8,13 +8,13 @@
 #include "IImageWrapper.h"
 #include "ImageWriteQueue.h"
 #include "ImageWriteTypes.h"
-#include "Misc/EngineVersionComparison.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "Containers/StringConv.h"
 #include "Internationalization/Internationalization.h"
 #include "Math/Vector2D.h"
+#include "OmniCaptureVersion.h"
 
 #include <exception>
 
@@ -1370,7 +1370,7 @@ bool FOmniCaptureImageWriter::WriteEXRInternal(TUniquePtr<FImagePixelData> Pixel
         return false;
     }
 
-#if UE_VERSION_AT_LEAST(5, 5, 0)
+#if OMNICAPTURE_UE_VERSION_AT_LEAST(5, 5, 0)
 #if WITH_OMNICAPTURE_OPENEXR
     TArray<FExrLayerRequest> Layers;
     FExrLayerRequest& Layer = Layers.Emplace_GetRef();
@@ -1406,7 +1406,7 @@ bool FOmniCaptureImageWriter::WriteEXRInternal(TUniquePtr<FImagePixelData> Pixel
 
     WriteQueue.Enqueue(MoveTemp(Task));
     return CompletionFuture.Get();
-#endif // UE_VERSION_AT_LEAST(5, 5, 0)
+#endif // OMNICAPTURE_UE_VERSION_AT_LEAST(5, 5, 0)
 }
 
 void FOmniCaptureImageWriter::RequestStop()

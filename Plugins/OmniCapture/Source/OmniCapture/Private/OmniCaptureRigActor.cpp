@@ -6,7 +6,7 @@
 #include "UObject/Package.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "OmniCaptureTypes.h"  // 增加头文件
-#include "Misc/EngineVersionComparison.h"
+#include "OmniCaptureVersion.h"
 #include "UObject/UnrealType.h"
 
 namespace
@@ -43,7 +43,7 @@ namespace
             OutConfig.ClearColor = FLinearColor::Black;
             OutConfig.bLinearTarget = true;
             return true;
-#if !UE_VERSION_AT_LEAST(5, 5, 0)
+#if !OMNICAPTURE_UE_VERSION_AT_LEAST(5, 5, 0)
         case EOmniCaptureAuxiliaryPassType::Roughness:
             OutConfig.CaptureSource = ESceneCaptureSource::SCS_Roughness;
             OutConfig.PixelFormat = PF_R16F;
