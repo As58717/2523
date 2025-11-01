@@ -161,6 +161,9 @@ struct OMNICAPTURE_API FOmniCaptureDiagnosticEntry
         float SecondsSinceCaptureStart = 0.0f;
 
         UPROPERTY(BlueprintReadOnly, Category = "Diagnostics")
+        int32 AttemptIndex = 0;
+
+        UPROPERTY(BlueprintReadOnly, Category = "Diagnostics")
         FString Step;
 
         UPROPERTY(BlueprintReadOnly, Category = "Diagnostics")

@@ -79,6 +79,7 @@ private:
         FText Message;
         EOmniCaptureDiagnosticLevel Level = EOmniCaptureDiagnosticLevel::Info;
         bool bIsPlaceholder = false;
+        int32 AttemptIndex = 0;
     };
 
     enum class EMetadataToggle : uint8

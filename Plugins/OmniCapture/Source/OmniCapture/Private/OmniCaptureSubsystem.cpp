@@ -74,6 +74,8 @@ void UOmniCaptureSubsystem::AppendDiagnostic(EOmniCaptureDiagnosticLevel Level, 
     FOmniCaptureDiagnosticEntry& Entry = DiagnosticLog.AddDefaulted_GetRef();
     Entry.Timestamp = FDateTime::UtcNow();
     Entry.SecondsSinceCaptureStart = CaptureStartTime > 0.0 ? static_cast<float>(FPlatformTime::Seconds() - CaptureStartTime) : 0.0f;
+    const int32 AttemptId = CurrentDiagnosticAttemptId > 0 ? CurrentDiagnosticAttemptId : (ActiveCaptureAttemptId > 0 ? ActiveCaptureAttemptId : 0);
+    Entry.AttemptIndex = AttemptId;
     Entry.Step = StepOverride.IsEmpty() ? (CurrentDiagnosticStep.IsEmpty() ? TEXT("General") : CurrentDiagnosticStep) : StepOverride;
     Entry.Message = Message;
     Entry.Level = Level;
@@ -119,6 +121,97 @@ void UOmniCaptureSubsystem::LogDiagnosticMessage(ELogVerbosity::Type Verbosity, 
     AppendDiagnosticFromVerbosity(Verbosity, Message, StepName);
 }
 
+void UOmniCaptureSubsystem::RecordCaptureFailure(const FString& StepName, const FString& FailureMessage, ELogVerbosity::Type Verbosity)
+{
+    const int32 AttemptId = ActiveCaptureAttemptId > 0
+        ? ActiveCaptureAttemptId
+        : (CurrentDiagnosticAttemptId > 0 ? CurrentDiagnosticAttemptId : (CaptureAttemptCounter > 0 ? CaptureAttemptCounter : 0));
+
+    if (AttemptId <= 0)
+    {
+        LogDiagnosticMessage(Verbosity, StepName, FailureMessage);
+        return;
+    }
+
+    CurrentDiagnosticAttemptId = AttemptId;
+    LogDiagnosticMessage(Verbosity, StepName, FailureMessage);
+
+    const double Now = FPlatformTime::Seconds();
+    const double StartTime = ActiveAttemptStartTime > 0.0 ? ActiveAttemptStartTime : CaptureStartTime;
+    const float DurationSeconds = StartTime > 0.0 ? static_cast<float>(Now - StartTime) : 0.0f;
+    const FString SummaryStep = FString::Printf(TEXT("Attempt %d Summary"), AttemptId);
+    const FString SummaryMessage = FString::Printf(TEXT("Capture attempt #%d failed after %.2fs at step '%s'. Reason: %s"), AttemptId, DurationSeconds, *StepName, *FailureMessage);
+    LogDiagnosticMessage(ELogVerbosity::Error, SummaryStep, SummaryMessage);
+
+    LastErrorMessage = FailureMessage;
+
+    ActiveCaptureAttemptId = 0;
+    CurrentDiagnosticAttemptId = 0;
+    ActiveAttemptStartTime = 0.0;
+    CaptureStartTime = 0.0;
+    bIsCapturing = false;
+    bIsPaused = false;
+    State = EOmniCaptureState::Idle;
+}
+
+void UOmniCaptureSubsystem::RecordCaptureCompletion(bool bFinalizeOutputs)
+{
+    const int32 AttemptId = ActiveCaptureAttemptId > 0
+        ? ActiveCaptureAttemptId
+        : (CurrentDiagnosticAttemptId > 0 ? CurrentDiagnosticAttemptId : 0);
+
+    if (AttemptId <= 0)
+    {
+        return;
+    }
+
+    CurrentDiagnosticAttemptId = AttemptId;
+
+    const double Now = FPlatformTime::Seconds();
+    const double StartTime = ActiveAttemptStartTime > 0.0 ? ActiveAttemptStartTime : CaptureStartTime;
+    const float DurationSeconds = StartTime > 0.0 ? static_cast<float>(Now - StartTime) : 0.0f;
+
+    const FString Outcome = bFinalizeOutputs ? TEXT("completed") : TEXT("stopped without finalization");
+
+    FString OutputDetail;
+    if (bFinalizeOutputs)
+    {
+        if (!LastFinalizedOutput.IsEmpty())
+        {
+            OutputDetail = FString::Printf(TEXT("Final output: %s"), *LastFinalizedOutput);
+        }
+        else if (ActiveSettings.OutputFormat == EOmniOutputFormat::ImageSequence)
+        {
+            OutputDetail = FString::Printf(TEXT("Image sequence stored in %s"), *ActiveSettings.OutputDirectory);
+        }
+        else if (!RecordedVideoPath.IsEmpty())
+        {
+            OutputDetail = FString::Printf(TEXT("Encoded video: %s"), *RecordedVideoPath);
+        }
+        else
+        {
+            OutputDetail = TEXT("No finalized output was generated.");
+        }
+    }
+    else
+    {
+        OutputDetail = TEXT("Finalization skipped by request.");
+    }
+
+    const FString SummaryStep = FString::Printf(TEXT("Attempt %d Summary"), AttemptId);
+    const FString SummaryMessage = FString::Printf(TEXT("Capture attempt #%d %s after %.2fs. Frames captured: %d. Dropped frames: %d. %s"),
+        AttemptId,
+        *Outcome,
+        DurationSeconds,
+        FrameCounter,
+        DroppedFrameCount,
+        *OutputDetail);
+    LogDiagnosticMessage(ELogVerbosity::Log, SummaryStep, SummaryMessage);
+
+    ActiveCaptureAttemptId = 0;
+    ActiveAttemptStartTime = 0.0;
+}
+
 void UOmniCaptureSubsystem::GetCaptureDiagnosticLog(TArray<FOmniCaptureDiagnosticEntry>& OutEntries) const
 {
     OutEntries = DiagnosticLog;
@@ -129,6 +222,14 @@ void UOmniCaptureSubsystem::ClearCaptureDiagnosticLog()
     DiagnosticLog.Reset();
     LastErrorMessage.Reset();
     CurrentDiagnosticStep.Reset();
+    if (bIsCapturing && ActiveCaptureAttemptId > 0)
+    {
+        CurrentDiagnosticAttemptId = ActiveCaptureAttemptId;
+    }
+    else
+    {
+        CurrentDiagnosticAttemptId = 0;
+    }
 }
 
 void UOmniCaptureSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -153,12 +254,17 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     }
 
     ClearCaptureDiagnosticLog();
+
+    ActiveCaptureAttemptId = ++CaptureAttemptCounter;
+    CurrentDiagnosticAttemptId = ActiveCaptureAttemptId;
+    ActiveAttemptStartTime = FPlatformTime::Seconds();
+
     SetDiagnosticContext(TEXT("BeginCapture"));
-    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Capture request received."), TEXT("BeginCapture"));
+    AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Capture request received (Attempt #%d)."), ActiveCaptureAttemptId), TEXT("BeginCapture"));
 
     if (InSettings.Resolution <= 0)
     {
-        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("BeginCapture"), TEXT("Invalid capture resolution"));
+        RecordCaptureFailure(TEXT("BeginCapture"), FString::Printf(TEXT("Invalid capture resolution (%d)."), InSettings.Resolution));
         return;
     }
 
@@ -206,7 +312,7 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
             const FString FailureMessage = CompatibilityFailure.IsEmpty()
                 ? TEXT("Capture aborted due to incompatible projection settings.")
                 : FString::Printf(TEXT("Capture aborted due to incompatible projection settings: %s"), *CompatibilityFailure);
-            LogDiagnosticMessage(ELogVerbosity::Error, TEXT("ValidateEnvironment"), FailureMessage);
+            RecordCaptureFailure(TEXT("ValidateEnvironment"), FailureMessage);
             return;
         }
 
@@ -222,7 +328,7 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
         const FString FailureMessage = FallbackFailureReason.IsEmpty()
             ? TEXT("Capture aborted due to environment validation failure.")
             : FString::Printf(TEXT("Capture aborted due to environment validation failure: %s"), *FallbackFailureReason);
-        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("ValidateEnvironment"), FailureMessage);
+        RecordCaptureFailure(TEXT("ValidateEnvironment"), FailureMessage);
         return;
     }
     AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Environment validation completed."), TEXT("ValidateEnvironment"));
@@ -237,7 +343,7 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     UWorld* World = GetWorld();
     if (!World)
     {
-        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("BeginCapture"), TEXT("Invalid world context for capture"));
+        RecordCaptureFailure(TEXT("BeginCapture"), TEXT("Invalid world context for capture (GetWorld returned null)."));
         return;
     }
 
@@ -252,7 +358,7 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     CreateRig();
     if (!RigActor.IsValid())
     {
-        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("CreateRig"), TEXT("Failed to create capture rig"));
+        RecordCaptureFailure(TEXT("CreateRig"), TEXT("Failed to create capture rig (AOmniCaptureRigActor was not spawned)."));
         RestoreRenderFeatureOverrides();
         DynamicParameterStartTime = 0.0;
         LastDynamicInterPupillaryDistance = -1.0f;
@@ -267,7 +373,7 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     CreateTickActor();
     if (!TickActor.IsValid())
     {
-        LogDiagnosticMessage(ELogVerbosity::Error, TEXT("CreateTickActor"), TEXT("Failed to create tick actor"));
+        RecordCaptureFailure(TEXT("CreateTickActor"), TEXT("Failed to create capture tick actor (AOmniCaptureDirectorActor was not spawned)."));
         DestroyRig();
         RestoreRenderFeatureOverrides();
         DynamicParameterStartTime = 0.0;
@@ -361,7 +467,8 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     const TCHAR* ProjectionLabel = ActiveSettings.IsPlanar()
         ? TEXT("Planar")
         : (ActiveSettings.IsFisheye() ? TEXT("Fisheye") : TEXT("Equirect"));
-    const FString BeginSummary = FString::Printf(TEXT("Begin capture %s %s (%dx%d -> %dx%d, %s %s) (%s, %s, %s) -> %s"),
+    const FString BeginSummary = FString::Printf(TEXT("Attempt #%d -> Begin capture %s %s (%dx%d -> %dx%d, %s %s) (%s, %s, %s) -> %s"),
+        ActiveCaptureAttemptId,
         ActiveSettings.Mode == EOmniCaptureMode::Stereo ? TEXT("Stereo") : TEXT("Mono"),
         CoverageLabel,
         ActiveSettings.IsPlanar() ? ActiveSettings.PlanarResolution.X : (ActiveSettings.IsFisheye() ? ActiveSettings.FisheyeResolution.X : ActiveSettings.Resolution),
@@ -386,7 +493,8 @@ void UOmniCaptureSubsystem::EndCapture(bool bFinalize)
         return;
     }
 
-    LogDiagnosticMessage(ELogVerbosity::Log, TEXT("EndCapture"), FString::Printf(TEXT("End capture (Finalize=%d)"), bFinalize ? 1 : 0));
+    const int32 AttemptId = ActiveCaptureAttemptId > 0 ? ActiveCaptureAttemptId : CurrentDiagnosticAttemptId;
+    LogDiagnosticMessage(ELogVerbosity::Log, TEXT("EndCapture"), FString::Printf(TEXT("Attempt #%d -> End capture (Finalize=%d)"), AttemptId, bFinalize ? 1 : 0));
 
     bIsCapturing = false;
     bIsPaused = false;
@@ -416,8 +524,13 @@ void UOmniCaptureSubsystem::EndCapture(bool bFinalize)
     }
     FinalizeOutputs(bFinalize);
 
+    RecordCaptureCompletion(bFinalize);
+
     SetDiagnosticContext(TEXT("Idle"));
     AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Capture session ended."), TEXT("Idle"));
+
+    CurrentDiagnosticAttemptId = 0;
+    CaptureStartTime = 0.0;
 
     State = EOmniCaptureState::Idle;
     LatestRingBufferStats = FOmniCaptureRingBufferStats();
