@@ -8,6 +8,7 @@
 #include "IImageWrapper.h"
 #include "ImageWriteQueue.h"
 #include "ImageWriteTypes.h"
+#include "Misc/EngineVersionComparison.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
