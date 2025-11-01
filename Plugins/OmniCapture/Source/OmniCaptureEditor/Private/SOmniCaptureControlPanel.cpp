@@ -2069,7 +2069,20 @@ void SOmniCaptureControlPanel::RefreshDiagnosticLog()
 
             const FText RelativeSeconds = FText::AsNumber(Entry.SecondsSinceCaptureStart, &SecondsFormat);
             Item->RelativeTime = FText::Format(LOCTEXT("DiagnosticsRelativeFormat", "(+{0}s)"), RelativeSeconds);
-            Item->Step = Entry.Step.IsEmpty() ? LOCTEXT("DiagnosticsDefaultStep", "Subsystem") : FText::FromString(Entry.Step);
+            Item->AttemptIndex = Entry.AttemptIndex;
+
+            const FText BaseStep = Entry.Step.IsEmpty()
+                ? LOCTEXT("DiagnosticsDefaultStep", "Subsystem")
+                : FText::FromString(Entry.Step);
+
+            if (Entry.AttemptIndex > 0)
+            {
+                Item->Step = FText::Format(LOCTEXT("DiagnosticsAttemptStepFormat", "Attempt {0} · {1}"), Entry.AttemptIndex, BaseStep);
+            }
+            else
+            {
+                Item->Step = BaseStep;
+            }
             Item->Message = Entry.Message.IsEmpty() ? LOCTEXT("DiagnosticsNoMessage", "No additional details.") : FText::FromString(Entry.Message);
             Item->Level = Entry.Level;
 

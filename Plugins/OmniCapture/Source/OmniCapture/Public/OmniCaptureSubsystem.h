@@ -153,6 +153,8 @@ private:
     void LogDiagnosticMessage(ELogVerbosity::Type Verbosity, const FString& StepName, const FString& Message);
     FString GetActiveDiagnosticStep() const { return CurrentDiagnosticStep; }
     void ApplyRigTransform(AOmniCaptureRigActor* Rig);
+    void RecordCaptureFailure(const FString& StepName, const FString& FailureMessage, ELogVerbosity::Type Verbosity = ELogVerbosity::Error);
+    void RecordCaptureCompletion(bool bFinalizeOutputs);
 
 private:
     friend class AOmniCaptureDirectorActor;
@@ -173,7 +175,11 @@ private:
     int32 DroppedFrameCount = 0;
 
     int32 FrameCounter = 0;
+    int32 CaptureAttemptCounter = 0;
+    int32 ActiveCaptureAttemptId = 0;
+    int32 CurrentDiagnosticAttemptId = 0;
     double CaptureStartTime = 0.0;
+    double ActiveAttemptStartTime = 0.0;
     double LastPreviewUpdateTime = 0.0;
     double PreviewFrameInterval = 0.0;
     double CurrentCaptureFPS = 0.0;
