@@ -87,6 +87,16 @@ enum class EOmniCapturePixelPrecision : uint8
     FullFloat
 };
 
+enum class EOmniCapturePixelDataType : uint8
+{
+    Unknown,
+    LinearColorFloat32,
+    LinearColorFloat16,
+    Color8,
+    ScalarFloat32,
+    Vector2Float32
+};
+
 UENUM(BlueprintType)
 enum class EOmniCaptureGamma : uint8 { SRGB, Linear };
 
@@ -303,6 +313,7 @@ struct FOmniCaptureLayerPayload
         TUniquePtr<FImagePixelData> PixelData;
         bool bLinear = false;
         EOmniCapturePixelPrecision Precision = EOmniCapturePixelPrecision::Unknown;
+        EOmniCapturePixelDataType PixelDataType = EOmniCapturePixelDataType::Unknown;
 };
 
 struct FOmniCaptureFrame
@@ -315,6 +326,7 @@ struct FOmniCaptureFrame
         bool bLinearColor = false;
         bool bUsedCPUFallback = false;
         EOmniCapturePixelPrecision PixelPrecision = EOmniCapturePixelPrecision::Unknown;
+        EOmniCapturePixelDataType PixelDataType = EOmniCapturePixelDataType::Unknown;
         TArray<FOmniAudioPacket> AudioPackets;
         TArray<FTextureRHIRef> EncoderTextures;
         TMap<FName, FOmniCaptureLayerPayload> AuxiliaryLayers;

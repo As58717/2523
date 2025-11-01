@@ -589,6 +589,7 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
                 Payload.PixelData = MoveTemp(AuxResult.PixelData);
                 Payload.bLinear = AuxResult.bIsLinear;
                 Payload.Precision = AuxResult.PixelPrecision;
+                Payload.PixelDataType = AuxResult.PixelDataType;
                 AuxiliaryLayers.Add(GetAuxiliaryLayerName(PassType), MoveTemp(Payload));
             }
         }
@@ -629,6 +630,7 @@ bool UOmniCaptureSubsystem::CapturePanoramaStill(const FOmniCaptureSettings& InS
     Frame->PixelData = MoveTemp(Result.PixelData);
     Frame->bLinearColor = Result.bIsLinear;
     Frame->bUsedCPUFallback = Result.bUsedCPUFallback;
+    Frame->PixelDataType = Result.PixelDataType;
     Frame->AuxiliaryLayers = MoveTemp(AuxiliaryLayers);
 
     Writer.EnqueueFrame(MoveTemp(Frame), FileName);
@@ -1364,6 +1366,7 @@ void UOmniCaptureSubsystem::CaptureFrame()
                 Payload.PixelData = MoveTemp(AuxResult.PixelData);
                 Payload.bLinear = AuxResult.bIsLinear;
                 Payload.Precision = AuxResult.PixelPrecision;
+                Payload.PixelDataType = AuxResult.PixelDataType;
                 AuxiliaryLayers.Add(GetAuxiliaryLayerName(PassType), MoveTemp(Payload));
             }
         }
@@ -1407,6 +1410,7 @@ void UOmniCaptureSubsystem::CaptureFrame()
     Frame->ReadyFence = ConversionResult.ReadyFence;
     Frame->bLinearColor = ConversionResult.bIsLinear;
     Frame->bUsedCPUFallback = ConversionResult.bUsedCPUFallback;
+    Frame->PixelDataType = ConversionResult.PixelDataType;
     Frame->PixelPrecision = ConversionResult.PixelPrecision;
     Frame->EncoderTextures.Reset();
     Frame->AuxiliaryLayers = MoveTemp(AuxiliaryLayers);

@@ -25,9 +25,10 @@ private:
         TUniquePtr<FImagePixelData> PixelData;
         bool bLinear = false;
         EOmniCapturePixelPrecision Precision = EOmniCapturePixelPrecision::Unknown;
+        EOmniCapturePixelDataType PixelDataType = EOmniCapturePixelDataType::Unknown;
     };
 
-    bool WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear, EOmniCapturePixelPrecision PixelPrecision) const;
+    bool WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear, EOmniCapturePixelPrecision PixelPrecision, EOmniCapturePixelDataType PixelDataType) const;
     bool WritePNGRaw(const FString& FilePath, const FIntPoint& Size, const void* RawData, int64 RawSizeInBytes, ERGBFormat Format, int32 BitDepth) const;
     bool WritePNGWithRowSource(const FString& FilePath, const FIntPoint& Size, ERGBFormat Format, int32 BitDepth, TFunctionRef<void(int32 RowStart, int32 RowCount, int64 BytesPerRow, TArray64<uint8>& TempBuffer, TArray<uint8*>& RowPointers)> PrepareRows) const;
     bool WritePNG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
@@ -39,10 +40,10 @@ private:
     bool WriteJPEG(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WriteJPEGFromLinear(const TImagePixelData<FFloat16Color>& PixelData, const FString& FilePath) const;
     bool WriteJPEGFromLinearFloat32(const TImagePixelData<FLinearColor>& PixelData, const FString& FilePath) const;
-    bool WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const;
+    bool WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision, EOmniCapturePixelDataType PixelDataType) const;
     bool WriteEXRFromColor(const TImagePixelData<FColor>& PixelData, const FString& FilePath) const;
     bool WriteEXRInternal(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EImagePixelType PixelType) const;
-    bool WriteEXRFrame(const FString& FilePath, bool bIsLinear, TUniquePtr<FImagePixelData> PixelData, EOmniCapturePixelPrecision PixelPrecision, TMap<FName, FOmniCaptureLayerPayload>&& AuxiliaryLayers, const FString& LayerDirectory, const FString& LayerBaseName, const FString& LayerExtension) const;
+    bool WriteEXRFrame(const FString& FilePath, bool bIsLinear, TUniquePtr<FImagePixelData> PixelData, EOmniCapturePixelPrecision PixelPrecision, EOmniCapturePixelDataType PixelDataType, TMap<FName, FOmniCaptureLayerPayload>&& AuxiliaryLayers, const FString& LayerDirectory, const FString& LayerBaseName, const FString& LayerExtension) const;
     bool WriteCombinedEXR(const FString& FilePath, TArray<FExrLayerRequest>& Layers) const;
     void RequestStop();
     bool IsStopRequested() const;

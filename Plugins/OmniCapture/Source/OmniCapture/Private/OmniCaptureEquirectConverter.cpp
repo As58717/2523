@@ -768,6 +768,7 @@ namespace
                     }
 
                     OutResult.PixelData = MoveTemp(PixelData);
+                    OutResult.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat32;
 
                     OutResult.PreviewPixels.SetNum(PixelCount);
                     const TImagePixelData<FLinearColor>* FloatData = static_cast<const TImagePixelData<FLinearColor>*>(OutResult.PixelData.Get());
@@ -793,6 +794,7 @@ namespace
                     }
 
                     OutResult.PixelData = MoveTemp(PixelData);
+                    OutResult.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat16;
 
                     OutResult.PreviewPixels.SetNum(PixelCount);
                     const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(OutResult.PixelData.Get());
@@ -838,6 +840,7 @@ namespace
                 }
 
                 OutResult.PixelData = MoveTemp(PixelData);
+                OutResult.PixelDataType = EOmniCapturePixelDataType::Color8;
             }
         }
 
@@ -1035,6 +1038,7 @@ namespace
                     }
 
                     OutResult.PixelData = MoveTemp(PixelData);
+                    OutResult.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat32;
 
                     OutResult.PreviewPixels.SetNum(PixelCount);
                     const TImagePixelData<FLinearColor>* FloatData = static_cast<const TImagePixelData<FLinearColor>*>(OutResult.PixelData.Get());
@@ -1060,6 +1064,7 @@ namespace
                     }
 
                     OutResult.PixelData = MoveTemp(PixelData);
+                    OutResult.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat16;
 
                     OutResult.PreviewPixels.SetNum(PixelCount);
                     const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(OutResult.PixelData.Get());
@@ -1105,6 +1110,7 @@ namespace
                 }
 
                 OutResult.PixelData = MoveTemp(PixelData);
+                OutResult.PixelDataType = EOmniCapturePixelDataType::Color8;
             }
         }
 
@@ -1322,6 +1328,7 @@ namespace
                 PixelData->Pixels.SetNum(PixelCount);
                 ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return Linear; });
                 OutResult.PixelData = MoveTemp(PixelData);
+                OutResult.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat32;
             }
             else
             {
@@ -1330,6 +1337,7 @@ namespace
                 PixelData->Pixels.SetNum(PixelCount);
                 ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return FFloat16Color(Linear); });
                 OutResult.PixelData = MoveTemp(PixelData);
+                OutResult.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat16;
             }
         }
         else
@@ -1338,6 +1346,7 @@ namespace
             PixelData->Pixels.SetNum(PixelCount);
             ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return Linear.ToFColor(true); });
             OutResult.PixelData = MoveTemp(PixelData);
+            OutResult.PixelDataType = EOmniCapturePixelDataType::Color8;
         }
     }
 
@@ -1444,6 +1453,7 @@ namespace
                 PixelData->Pixels.SetNum(PixelCount);
                 ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return Linear; });
                 OutResult.PixelData = MoveTemp(PixelData);
+                OutResult.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat32;
             }
             else
             {
@@ -1452,6 +1462,7 @@ namespace
                 PixelData->Pixels.SetNum(PixelCount);
                 ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return FFloat16Color(Linear); });
                 OutResult.PixelData = MoveTemp(PixelData);
+                OutResult.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat16;
             }
         }
         else
@@ -1460,6 +1471,7 @@ namespace
             PixelData->Pixels.SetNum(PixelCount);
             ProcessPixel(PixelData->Pixels, [](const FLinearColor& Linear) { return Linear.ToFColor(true); });
             OutResult.PixelData = MoveTemp(PixelData);
+            OutResult.PixelDataType = EOmniCapturePixelDataType::Color8;
         }
     }
 }
@@ -1676,6 +1688,7 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToPlanar(const 
         {
             PixelData->Pixels = MoveTemp(TempPixels);
             Result.PixelData = MoveTemp(PixelData);
+            Result.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat16;
         }
     }
     else
@@ -1691,6 +1704,7 @@ FOmniCaptureEquirectResult FOmniCaptureEquirectConverter::ConvertToPlanar(const 
         {
             PixelData->Pixels = MoveTemp(TempPixels);
             Result.PixelData = MoveTemp(PixelData);
+            Result.PixelDataType = EOmniCapturePixelDataType::Color8;
         }
     }
 

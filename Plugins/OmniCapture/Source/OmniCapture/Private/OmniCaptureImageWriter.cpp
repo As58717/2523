@@ -255,18 +255,19 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
     }
 
     const EOmniCapturePixelPrecision PixelPrecision = Frame->PixelPrecision;
+    const EOmniCapturePixelDataType PixelDataType = Frame->PixelDataType;
     const FString LayerDirectory = FPaths::GetPath(TargetPath);
     const FString LayerBaseName = FPaths::GetBaseFilename(TargetPath);
     const FString LayerExtension = FPaths::GetExtension(TargetPath, true);
 
-    TFuture<bool> Future = Async(EAsyncExecution::ThreadPool, [this, FilePath = MoveTemp(TargetPath), Format = TargetFormat, bIsLinear, PixelPrecision, PixelData = MoveTemp(PixelData), AuxiliaryLayers = MoveTemp(AuxiliaryLayers), LayerDirectory, LayerBaseName, LayerExtension]() mutable
+    TFuture<bool> Future = Async(EAsyncExecution::ThreadPool, [this, FilePath = MoveTemp(TargetPath), Format = TargetFormat, bIsLinear, PixelPrecision, PixelDataType, PixelData = MoveTemp(PixelData), AuxiliaryLayers = MoveTemp(AuxiliaryLayers), LayerDirectory, LayerBaseName, LayerExtension]() mutable
     {
         if (Format == EOmniCaptureImageFormat::EXR)
         {
-            return WriteEXRFrame(FilePath, bIsLinear, MoveTemp(PixelData), PixelPrecision, MoveTemp(AuxiliaryLayers), LayerDirectory, LayerBaseName, LayerExtension);
+            return WriteEXRFrame(FilePath, bIsLinear, MoveTemp(PixelData), PixelPrecision, PixelDataType, MoveTemp(AuxiliaryLayers), LayerDirectory, LayerBaseName, LayerExtension);
         }
 
-        bool bResult = WritePixelDataToDisk(MoveTemp(PixelData), FilePath, Format, bIsLinear, PixelPrecision);
+        bool bResult = WritePixelDataToDisk(MoveTemp(PixelData), FilePath, Format, bIsLinear, PixelPrecision, PixelDataType);
 
         for (TPair<FName, FOmniCaptureLayerPayload>& Pair : AuxiliaryLayers)
         {
@@ -279,7 +280,21 @@ void FOmniCaptureImageWriter::EnqueueFrame(TUniquePtr<FOmniCaptureFrame>&& Frame
             const FString LayerPath = FPaths::Combine(LayerDirectory, LayerFileName);
             const bool bLayerLinear = Pair.Value.bLinear;
             const EOmniCapturePixelPrecision LayerPrecision = (Pair.Value.Precision == EOmniCapturePixelPrecision::Unknown) ? PixelPrecision : Pair.Value.Precision;
-            bResult &= WritePixelDataToDisk(MoveTemp(Pair.Value.PixelData), LayerPath, Format, bLayerLinear, LayerPrecision);
+            EOmniCapturePixelDataType LayerType = Pair.Value.PixelDataType;
+            if (LayerType == EOmniCapturePixelDataType::Unknown)
+            {
+                if (bLayerLinear)
+                {
+                    LayerType = (LayerPrecision == EOmniCapturePixelPrecision::FullFloat)
+                        ? EOmniCapturePixelDataType::LinearColorFloat32
+                        : EOmniCapturePixelDataType::LinearColorFloat16;
+                }
+                else
+                {
+                    LayerType = EOmniCapturePixelDataType::Color8;
+                }
+            }
+            bResult &= WritePixelDataToDisk(MoveTemp(Pair.Value.PixelData), LayerPath, Format, bLayerLinear, LayerPrecision, LayerType);
         }
 
         return bResult;
@@ -311,7 +326,7 @@ TArray<FOmniCaptureFrameMetadata> FOmniCaptureImageWriter::ConsumeCapturedFrames
     return Result;
 }
 
-bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear, EOmniCapturePixelPrecision PixelPrecision) const
+bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCaptureImageFormat Format, bool bIsLinear, EOmniCapturePixelPrecision PixelPrecision, EOmniCapturePixelDataType PixelDataType) const
 {
     if (!PixelData.IsValid())
     {
@@ -323,10 +338,13 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
         return false;
     }
 
+    EOmniCapturePixelDataType EffectiveType = PixelDataType;
+
     if (Format != EOmniCaptureImageFormat::EXR)
     {
-        if (const TImagePixelData<float>* ScalarData = dynamic_cast<const TImagePixelData<float>*>(PixelData.Get()))
+        if (EffectiveType == EOmniCapturePixelDataType::ScalarFloat32)
         {
+            const TImagePixelData<float>* ScalarData = static_cast<const TImagePixelData<float>*>(PixelData.Get());
             const FIntPoint Size = ScalarData->GetSize();
             const int32 PixelCount = Size.X * Size.Y;
             TUniquePtr<TImagePixelData<FLinearColor>> Expanded = MakeUnique<TImagePixelData<FLinearColor>>(Size);
@@ -340,9 +358,11 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
             PixelData = MoveTemp(Expanded);
             PixelPrecision = EOmniCapturePixelPrecision::FullFloat;
             bIsLinear = true;
+            EffectiveType = EOmniCapturePixelDataType::LinearColorFloat32;
         }
-        else if (const TImagePixelData<FVector2f>* VectorData = dynamic_cast<const TImagePixelData<FVector2f>*>(PixelData.Get()))
+        else if (EffectiveType == EOmniCapturePixelDataType::Vector2Float32)
         {
+            const TImagePixelData<FVector2f>* VectorData = static_cast<const TImagePixelData<FVector2f>*>(PixelData.Get());
             const FIntPoint Size = VectorData->GetSize();
             const int32 PixelCount = Size.X * Size.Y;
             TUniquePtr<TImagePixelData<FLinearColor>> Expanded = MakeUnique<TImagePixelData<FLinearColor>>(Size);
@@ -356,10 +376,21 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
             PixelData = MoveTemp(Expanded);
             PixelPrecision = EOmniCapturePixelPrecision::FullFloat;
             bIsLinear = true;
+            EffectiveType = EOmniCapturePixelDataType::LinearColorFloat32;
         }
     }
 
     bool bWriteSuccessful = false;
+
+    const auto RequireType = [&](EOmniCapturePixelDataType ExpectedType) -> bool
+    {
+        if (EffectiveType != ExpectedType)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Pixel data type mismatch while writing '%s' (expected %d, got %d)"), *FilePath, static_cast<int32>(ExpectedType), static_cast<int32>(EffectiveType));
+            return false;
+        }
+        return true;
+    };
 
     switch (Format)
     {
@@ -368,30 +399,42 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
         {
             if (PixelPrecision == EOmniCapturePixelPrecision::FullFloat)
             {
-                const TImagePixelData<FLinearColor>* FloatData = static_cast<const TImagePixelData<FLinearColor>*>(PixelData.Get());
-                bWriteSuccessful = WriteJPEGFromLinearFloat32(*FloatData, FilePath);
+                if (RequireType(EOmniCapturePixelDataType::LinearColorFloat32))
+                {
+                    const TImagePixelData<FLinearColor>* FloatData = static_cast<const TImagePixelData<FLinearColor>*>(PixelData.Get());
+                    bWriteSuccessful = WriteJPEGFromLinearFloat32(*FloatData, FilePath);
+                }
             }
             else
             {
-                const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
-                bWriteSuccessful = WriteJPEGFromLinear(*FloatData, FilePath);
+                if (RequireType(EOmniCapturePixelDataType::LinearColorFloat16))
+                {
+                    const TImagePixelData<FFloat16Color>* FloatData = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
+                    bWriteSuccessful = WriteJPEGFromLinear(*FloatData, FilePath);
+                }
             }
         }
         else
         {
-            const TImagePixelData<FColor>* ColorData = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
-            bWriteSuccessful = WriteJPEG(*ColorData, FilePath);
+            if (RequireType(EOmniCapturePixelDataType::Color8))
+            {
+                const TImagePixelData<FColor>* ColorData = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
+                bWriteSuccessful = WriteJPEG(*ColorData, FilePath);
+            }
         }
         break;
     case EOmniCaptureImageFormat::EXR:
         if (bIsLinear)
         {
-            bWriteSuccessful = WriteEXR(MoveTemp(PixelData), FilePath, PixelPrecision);
+            bWriteSuccessful = WriteEXR(MoveTemp(PixelData), FilePath, PixelPrecision, EffectiveType);
         }
         else
         {
-            const TImagePixelData<FColor>* SRGBData = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
-            bWriteSuccessful = WriteEXRFromColor(*SRGBData, FilePath);
+            if (RequireType(EOmniCapturePixelDataType::Color8))
+            {
+                const TImagePixelData<FColor>* SRGBData = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
+                bWriteSuccessful = WriteEXRFromColor(*SRGBData, FilePath);
+            }
         }
         break;
     case EOmniCaptureImageFormat::BMP:
@@ -399,19 +442,28 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
         {
             if (PixelPrecision == EOmniCapturePixelPrecision::FullFloat)
             {
-                const TImagePixelData<FLinearColor>* LinearBMP = static_cast<const TImagePixelData<FLinearColor>*>(PixelData.Get());
-                bWriteSuccessful = WriteBMPFromLinearFloat32(*LinearBMP, FilePath);
+                if (RequireType(EOmniCapturePixelDataType::LinearColorFloat32))
+                {
+                    const TImagePixelData<FLinearColor>* LinearBMP = static_cast<const TImagePixelData<FLinearColor>*>(PixelData.Get());
+                    bWriteSuccessful = WriteBMPFromLinearFloat32(*LinearBMP, FilePath);
+                }
             }
             else
             {
-                const TImagePixelData<FFloat16Color>* LinearBMP = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
-                bWriteSuccessful = WriteBMPFromLinear(*LinearBMP, FilePath);
+                if (RequireType(EOmniCapturePixelDataType::LinearColorFloat16))
+                {
+                    const TImagePixelData<FFloat16Color>* LinearBMP = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
+                    bWriteSuccessful = WriteBMPFromLinear(*LinearBMP, FilePath);
+                }
             }
         }
         else
         {
-            const TImagePixelData<FColor>* BmpColor = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
-            bWriteSuccessful = WriteBMP(*BmpColor, FilePath);
+            if (RequireType(EOmniCapturePixelDataType::Color8))
+            {
+                const TImagePixelData<FColor>* BmpColor = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
+                bWriteSuccessful = WriteBMP(*BmpColor, FilePath);
+            }
         }
         break;
     case EOmniCaptureImageFormat::PNG:
@@ -420,19 +472,28 @@ bool FOmniCaptureImageWriter::WritePixelDataToDisk(TUniquePtr<FImagePixelData> P
         {
             if (PixelPrecision == EOmniCapturePixelPrecision::FullFloat)
             {
-                const TImagePixelData<FLinearColor>* LinearData = static_cast<const TImagePixelData<FLinearColor>*>(PixelData.Get());
-                bWriteSuccessful = WritePNGFromLinearFloat32(*LinearData, FilePath);
+                if (RequireType(EOmniCapturePixelDataType::LinearColorFloat32))
+                {
+                    const TImagePixelData<FLinearColor>* LinearData = static_cast<const TImagePixelData<FLinearColor>*>(PixelData.Get());
+                    bWriteSuccessful = WritePNGFromLinearFloat32(*LinearData, FilePath);
+                }
             }
             else
             {
-                const TImagePixelData<FFloat16Color>* LinearData = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
-                bWriteSuccessful = WritePNGFromLinear(*LinearData, FilePath);
+                if (RequireType(EOmniCapturePixelDataType::LinearColorFloat16))
+                {
+                    const TImagePixelData<FFloat16Color>* LinearData = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData.Get());
+                    bWriteSuccessful = WritePNGFromLinear(*LinearData, FilePath);
+                }
             }
         }
         else
         {
-            const TImagePixelData<FColor>* PngData = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
-            bWriteSuccessful = WritePNG(*PngData, FilePath);
+            if (RequireType(EOmniCapturePixelDataType::Color8))
+            {
+                const TImagePixelData<FColor>* PngData = static_cast<const TImagePixelData<FColor>*>(PixelData.Get());
+                bWriteSuccessful = WritePNG(*PngData, FilePath);
+            }
         }
         break;
     }
@@ -1018,7 +1079,7 @@ bool FOmniCaptureImageWriter::WriteJPEGFromLinearFloat32(const TImagePixelData<F
     return WriteJPEG(*TempData, FilePath);
 }
 
-bool FOmniCaptureImageWriter::WriteEXRFrame(const FString& FilePath, bool bIsLinear, TUniquePtr<FImagePixelData> PixelData, EOmniCapturePixelPrecision PixelPrecision, TMap<FName, FOmniCaptureLayerPayload>&& AuxiliaryLayers, const FString& LayerDirectory, const FString& LayerBaseName, const FString& LayerExtension) const
+bool FOmniCaptureImageWriter::WriteEXRFrame(const FString& FilePath, bool bIsLinear, TUniquePtr<FImagePixelData> PixelData, EOmniCapturePixelPrecision PixelPrecision, EOmniCapturePixelDataType PixelDataType, TMap<FName, FOmniCaptureLayerPayload>&& AuxiliaryLayers, const FString& LayerDirectory, const FString& LayerBaseName, const FString& LayerExtension) const
 {
     if (!PixelData.IsValid())
     {
@@ -1033,6 +1094,13 @@ bool FOmniCaptureImageWriter::WriteEXRFrame(const FString& FilePath, bool bIsLin
     BeautyLayer.PixelData = MoveTemp(PixelData);
     BeautyLayer.bLinear = bIsLinear;
     BeautyLayer.Precision = PixelPrecision;
+    BeautyLayer.PixelDataType = PixelDataType;
+    if (BeautyLayer.PixelDataType == EOmniCapturePixelDataType::Unknown)
+    {
+        BeautyLayer.PixelDataType = (BeautyLayer.Precision == EOmniCapturePixelPrecision::FullFloat)
+            ? EOmniCapturePixelDataType::LinearColorFloat32
+            : EOmniCapturePixelDataType::LinearColorFloat16;
+    }
 
     for (TPair<FName, FOmniCaptureLayerPayload>& Pair : AuxiliaryLayers)
     {
@@ -1046,6 +1114,22 @@ bool FOmniCaptureImageWriter::WriteEXRFrame(const FString& FilePath, bool bIsLin
         Request.PixelData = MoveTemp(Pair.Value.PixelData);
         Request.bLinear = Pair.Value.bLinear;
         Request.Precision = (Pair.Value.Precision == EOmniCapturePixelPrecision::Unknown) ? PixelPrecision : Pair.Value.Precision;
+        Request.PixelDataType = Pair.Value.PixelDataType;
+        if (Request.PixelDataType == EOmniCapturePixelDataType::Unknown)
+        {
+            switch (Request.Precision)
+            {
+            case EOmniCapturePixelPrecision::FullFloat:
+                Request.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat32;
+                break;
+            case EOmniCapturePixelPrecision::HalfFloat:
+                Request.PixelDataType = EOmniCapturePixelDataType::LinearColorFloat16;
+                break;
+            default:
+                Request.PixelDataType = EOmniCapturePixelDataType::Color8;
+                break;
+            }
+        }
     }
 
     if (bPackEXRAuxiliaryLayers && Layers.Num() > 1)
@@ -1065,7 +1149,7 @@ bool FOmniCaptureImageWriter::WriteEXRFrame(const FString& FilePath, bool bIsLin
     bool bResult = true;
     if (Layers.Num() > 0)
     {
-        bResult = WriteEXR(MoveTemp(Layers[0].PixelData), FilePath, Layers[0].Precision);
+        bResult = WriteEXR(MoveTemp(Layers[0].PixelData), FilePath, Layers[0].Precision, Layers[0].PixelDataType);
     }
 
     for (int32 Index = 1; Index < Layers.Num(); ++Index)
@@ -1077,7 +1161,7 @@ bool FOmniCaptureImageWriter::WriteEXRFrame(const FString& FilePath, bool bIsLin
 
         const FString LayerFileName = FString::Printf(TEXT("%s_%s%s"), *LayerBaseName, *Layers[Index].Name, *LayerExtension);
         const FString LayerPath = FPaths::Combine(LayerDirectory, LayerFileName);
-        bResult &= WriteEXR(MoveTemp(Layers[Index].PixelData), LayerPath, Layers[Index].Precision);
+        bResult &= WriteEXR(MoveTemp(Layers[Index].PixelData), LayerPath, Layers[Index].Precision, Layers[Index].PixelDataType);
     }
 
     return bResult;
@@ -1136,8 +1220,11 @@ bool FOmniCaptureImageWriter::WriteCombinedEXR(const FString& FilePath, TArray<F
             Precision = EOmniCapturePixelPrecision::HalfFloat;
         }
 
-        if (const TImagePixelData<FLinearColor>* Float32Data = dynamic_cast<const TImagePixelData<FLinearColor>*>(PixelData))
+        switch (Layer.PixelDataType)
         {
+        case EOmniCapturePixelDataType::LinearColorFloat32:
+        {
+            const TImagePixelData<FLinearColor>* Float32Data = static_cast<const TImagePixelData<FLinearColor>*>(PixelData);
             Prepared.PixelType = OPENEXR_IMF_NAMESPACE::PixelType::FLOAT;
             Prepared.FloatBuffer.SetNum(PixelCount * 4);
 
@@ -1150,9 +1237,11 @@ bool FOmniCaptureImageWriter::WriteCombinedEXR(const FString& FilePath, TArray<F
                 Prepared.FloatBuffer[Base + 2] = Src.B;
                 Prepared.FloatBuffer[Base + 3] = Src.A;
             }
+            break;
         }
-        else if (const TImagePixelData<FFloat16Color>* Float16Data = dynamic_cast<const TImagePixelData<FFloat16Color>*>(PixelData))
+        case EOmniCapturePixelDataType::LinearColorFloat16:
         {
+            const TImagePixelData<FFloat16Color>* Float16Data = static_cast<const TImagePixelData<FFloat16Color>*>(PixelData);
             Prepared.PixelType = OPENEXR_IMF_NAMESPACE::PixelType::HALF;
             Prepared.HalfBuffer.SetNum(PixelCount * 4);
 
@@ -1165,9 +1254,11 @@ bool FOmniCaptureImageWriter::WriteCombinedEXR(const FString& FilePath, TArray<F
                 Prepared.HalfBuffer[Base + 2] = IMATH_NAMESPACE::half(Src.B.GetFloat());
                 Prepared.HalfBuffer[Base + 3] = IMATH_NAMESPACE::half(Src.A.GetFloat());
             }
+            break;
         }
-        else if (const TImagePixelData<FColor>* ColorData = dynamic_cast<const TImagePixelData<FColor>*>(PixelData))
+        case EOmniCapturePixelDataType::Color8:
         {
+            const TImagePixelData<FColor>* ColorData = static_cast<const TImagePixelData<FColor>*>(PixelData);
             Prepared.PixelType = OPENEXR_IMF_NAMESPACE::PixelType::FLOAT;
             Prepared.FloatBuffer.SetNum(PixelCount * 4);
 
@@ -1180,9 +1271,9 @@ bool FOmniCaptureImageWriter::WriteCombinedEXR(const FString& FilePath, TArray<F
                 Prepared.FloatBuffer[Base + 2] = Src.B;
                 Prepared.FloatBuffer[Base + 3] = Src.A;
             }
+            break;
         }
-        else
-        {
+        default:
             UE_LOG(LogTemp, Warning, TEXT("Unsupported pixel payload for EXR layer '%s'"), *Layer.Name);
             return false;
         }
@@ -1297,7 +1388,7 @@ bool FOmniCaptureImageWriter::WriteCombinedEXR(const FString& FilePath, TArray<F
 }
 #endif
 
-bool FOmniCaptureImageWriter::WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision) const
+bool FOmniCaptureImageWriter::WriteEXR(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EOmniCapturePixelPrecision PixelPrecision, EOmniCapturePixelDataType PixelDataType) const
 {
     if (!PixelData.IsValid())
     {
@@ -1308,6 +1399,8 @@ bool FOmniCaptureImageWriter::WriteEXR(TUniquePtr<FImagePixelData> PixelData, co
     {
         return false;
     }
+
+    const EOmniCapturePixelDataType EffectiveType = PixelDataType;
 
     EOmniCapturePixelPrecision EffectivePrecision = PixelPrecision;
     if (EffectivePrecision == EOmniCapturePixelPrecision::Unknown)
@@ -1326,6 +1419,15 @@ bool FOmniCaptureImageWriter::WriteEXR(TUniquePtr<FImagePixelData> PixelData, co
         break;
     default:
         return false;
+    }
+
+    if (EffectivePrecision == EOmniCapturePixelPrecision::FullFloat && EffectiveType != EOmniCapturePixelDataType::LinearColorFloat32)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("WriteEXR expected 32-bit linear color data for '%s'."), *FilePath);
+    }
+    else if (EffectivePrecision == EOmniCapturePixelPrecision::HalfFloat && EffectiveType != EOmniCapturePixelDataType::LinearColorFloat16)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("WriteEXR expected 16-bit linear color data for '%s'."), *FilePath);
     }
 
     IFileManager::Get().Delete(*FilePath, false, true, false);
@@ -1355,7 +1457,7 @@ bool FOmniCaptureImageWriter::WriteEXRFromColor(const TImagePixelData<FColor>& P
 
     TUniquePtr<TImagePixelData<FFloat16Color>> TempData = MakeUnique<TImagePixelData<FFloat16Color>>(Size);
     TempData->Pixels = MoveTemp(Converted);
-    return WriteEXR(MoveTemp(TempData), FilePath, EOmniCapturePixelPrecision::HalfFloat);
+    return WriteEXR(MoveTemp(TempData), FilePath, EOmniCapturePixelPrecision::HalfFloat, EOmniCapturePixelDataType::LinearColorFloat16);
 }
 
 bool FOmniCaptureImageWriter::WriteEXRInternal(TUniquePtr<FImagePixelData> PixelData, const FString& FilePath, EImagePixelType PixelType) const
