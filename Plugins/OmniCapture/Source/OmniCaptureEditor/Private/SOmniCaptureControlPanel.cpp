@@ -7,6 +7,7 @@
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "IDesktopPlatform.h"
+#include "Templates/Casts.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "OmniCaptureEditorSettings.h"
@@ -1755,7 +1756,7 @@ FTransform SOmniCaptureControlPanel::GetEditorViewportCameraTransform() const
 
     if (FViewport* ActiveViewport = GEditor->GetActiveViewport())
     {
-        if (FEditorViewportClient* ViewportClient = ActiveViewport->GetClient())
+        if (FEditorViewportClient* ViewportClient = Cast<FEditorViewportClient>(ActiveViewport->GetClient()))
         {
             const FVector Location = ViewportClient->GetViewLocation();
             const FRotator Rotation = ViewportClient->GetViewRotation();
