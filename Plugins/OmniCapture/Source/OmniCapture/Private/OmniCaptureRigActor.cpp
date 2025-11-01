@@ -457,22 +457,22 @@ void AOmniCaptureRigActor::GetOrientationForFace(int32 FaceIndex, FRotator& OutR
     switch (FaceIndex)
     {
     case 0: // +X
-        OutRotation = FRotator(0.0f, 90.0f, 0.0f);
-        break;
-    case 1: // -X
-        OutRotation = FRotator(0.0f, -90.0f, 0.0f);
-        break;
-    case 2: // +Y
-        OutRotation = FRotator(-90.0f, 0.0f, 0.0f);
-        break;
-    case 3: // -Y
-        OutRotation = FRotator(90.0f, 0.0f, 0.0f);
-        break;
-    case 4: // +Z
         OutRotation = FRotator(0.0f, 0.0f, 0.0f);
         break;
-    case 5: // -Z
+    case 1: // -X
         OutRotation = FRotator(0.0f, 180.0f, 0.0f);
+        break;
+    case 2: // +Y
+        OutRotation = FRotator(0.0f, 90.0f, 0.0f);
+        break;
+    case 3: // -Y
+        OutRotation = FRotator(0.0f, -90.0f, 0.0f);
+        break;
+    case 4: // +Z
+        OutRotation = FRotator(-90.0f, 0.0f, 0.0f);
+        break;
+    case 5: // -Z
+        OutRotation = FRotator(90.0f, 0.0f, 0.0f);
         break;
     default:
         OutRotation = FRotator::ZeroRotator;
