@@ -232,6 +232,21 @@ bool FOmniCaptureSettings::IsSphericalMirror() const
     return Projection == EOmniCaptureProjection::SphericalMirror;
 }
 
+bool FOmniCaptureSettings::SupportsSphericalMetadata() const
+{
+    if (IsPlanar())
+    {
+        return false;
+    }
+
+    if (IsCylindrical() || IsFullDome() || IsSphericalMirror())
+    {
+        return false;
+    }
+
+    return true;
+}
+
 bool FOmniCaptureSettings::IsVR180() const
 {
     return Coverage == EOmniCaptureCoverage::HalfSphere;

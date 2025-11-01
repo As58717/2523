@@ -694,6 +694,16 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             SNew(SCheckBox)
             .IsChecked(this, &SOmniCaptureControlPanel::GetMetadataToggleState, EMetadataToggle::SpatialJson)
             .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleMetadataToggleChanged, EMetadataToggle::SpatialJson)
+            .IsEnabled_Lambda([this]()
+            {
+                return IsSphericalMetadataSupported();
+            })
+            .ToolTipText_Lambda([this]()
+            {
+                return IsSphericalMetadataSupported()
+                    ? LOCTEXT("SpatialJsonToggleTooltip", "Write a sidecar JSON file that advertises VR projection metadata.")
+                    : LOCTEXT("SpatialJsonToggleTooltipDisabled", "Spatial metadata is only embedded for VR180/VR360 style captures.");
+            })
             .Content()
             [
                 SNew(STextBlock)
@@ -706,6 +716,16 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             SNew(SCheckBox)
             .IsChecked(this, &SOmniCaptureControlPanel::GetMetadataToggleState, EMetadataToggle::XMP)
             .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleMetadataToggleChanged, EMetadataToggle::XMP)
+            .IsEnabled_Lambda([this]()
+            {
+                return IsSphericalMetadataSupported();
+            })
+            .ToolTipText_Lambda([this]()
+            {
+                return IsSphericalMetadataSupported()
+                    ? LOCTEXT("XMPToggleTooltip", "Embed Google VR XMP metadata directly into generated media.")
+                    : LOCTEXT("XMPToggleTooltipDisabled", "Planar and dome projections do not write spherical XMP metadata.");
+            })
             .Content()
             [
                 SNew(STextBlock)
@@ -720,7 +740,7 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
             .OnCheckStateChanged(this, &SOmniCaptureControlPanel::HandleMetadataToggleChanged, EMetadataToggle::FFmpeg)
             .IsEnabled_Lambda([this]()
             {
-                return FeatureAvailability.FFmpeg.bAvailable;
+                return FeatureAvailability.FFmpeg.bAvailable && IsSphericalMetadataSupported();
             })
             .ToolTipText_Lambda([this]()
             {
@@ -2444,16 +2464,31 @@ EVisibility SOmniCaptureControlPanel::GetZeroCopyWarningVisibility() const
 
 FText SOmniCaptureControlPanel::GetFFmpegMetadataTooltip() const
 {
+    if (!IsSphericalMetadataSupported())
+    {
+        return LOCTEXT("FFmpegMetadataTooltipDisabled", "FFmpeg spherical metadata is disabled for planar and dome captures.");
+    }
+
     return FeatureAvailability.FFmpeg.bAvailable ? LOCTEXT("FFmpegMetadataTooltip", "Inject spherical metadata during FFmpeg muxing.") : FeatureAvailability.FFmpeg.Reason;
 }
 
 FText SOmniCaptureControlPanel::GetFFmpegWarningText() const
 {
+    if (!IsSphericalMetadataSupported())
+    {
+        return FText::GetEmpty();
+    }
+
     return FeatureAvailability.FFmpeg.bAvailable ? FText::GetEmpty() : FeatureAvailability.FFmpeg.Reason;
 }
 
 EVisibility SOmniCaptureControlPanel::GetFFmpegWarningVisibility() const
 {
+    if (!IsSphericalMetadataSupported())
+    {
+        return EVisibility::Collapsed;
+    }
+
     return FeatureAvailability.FFmpeg.bAvailable ? EVisibility::Collapsed : EVisibility::Visible;
 }
 
@@ -2851,6 +2886,11 @@ void SOmniCaptureControlPanel::ApplyPNGBitDepth(EOmniCapturePNGBitDepth BitDepth
 
 void SOmniCaptureControlPanel::ApplyMetadataToggle(EMetadataToggle Toggle, bool bEnabled)
 {
+    if (!IsSphericalMetadataSupported() && Toggle != EMetadataToggle::Manifest && bEnabled)
+    {
+        return;
+    }
+
     ModifyCaptureSettings([Toggle, bEnabled](FOmniCaptureSettings& Settings)
     {
         switch (Toggle)
@@ -2871,6 +2911,11 @@ void SOmniCaptureControlPanel::ApplyMetadataToggle(EMetadataToggle Toggle, bool 
             break;
         }
     });
+}
+
+bool SOmniCaptureControlPanel::IsSphericalMetadataSupported() const
+{
+    return GetSettingsSnapshot().SupportsSphericalMetadata();
 }
 
 ECheckBoxState SOmniCaptureControlPanel::GetVRModeCheckState(bool bVR180) const
@@ -3057,6 +3102,7 @@ void SOmniCaptureControlPanel::HandleFisheyeFOVCommitted(float NewValue, ETextCo
 ECheckBoxState SOmniCaptureControlPanel::GetMetadataToggleState(EMetadataToggle Toggle) const
 {
     const FOmniCaptureSettings Snapshot = GetSettingsSnapshot();
+    const bool bSupportsSphericalMetadata = Snapshot.SupportsSphericalMetadata();
     bool bEnabled = false;
 
     switch (Toggle)
@@ -3065,13 +3111,13 @@ ECheckBoxState SOmniCaptureControlPanel::GetMetadataToggleState(EMetadataToggle 
         bEnabled = Snapshot.bGenerateManifest;
         break;
     case EMetadataToggle::SpatialJson:
-        bEnabled = Snapshot.bWriteSpatialMetadata;
+        bEnabled = bSupportsSphericalMetadata && Snapshot.bWriteSpatialMetadata;
         break;
     case EMetadataToggle::XMP:
-        bEnabled = Snapshot.bWriteXMPMetadata;
+        bEnabled = bSupportsSphericalMetadata && Snapshot.bWriteXMPMetadata;
         break;
     case EMetadataToggle::FFmpeg:
-        bEnabled = Snapshot.bInjectFFmpegMetadata;
+        bEnabled = bSupportsSphericalMetadata && Snapshot.bInjectFFmpegMetadata;
         break;
     default:
         break;
@@ -3082,6 +3128,11 @@ ECheckBoxState SOmniCaptureControlPanel::GetMetadataToggleState(EMetadataToggle 
 
 void SOmniCaptureControlPanel::HandleMetadataToggleChanged(ECheckBoxState NewState, EMetadataToggle Toggle)
 {
+    if (!IsSphericalMetadataSupported() && Toggle != EMetadataToggle::Manifest)
+    {
+        return;
+    }
+
     ApplyMetadataToggle(Toggle, NewState == ECheckBoxState::Checked);
 }
 
