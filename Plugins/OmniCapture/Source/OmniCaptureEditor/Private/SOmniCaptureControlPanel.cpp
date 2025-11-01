@@ -3,7 +3,7 @@
 #include "DesktopPlatformModule.h"
 #include "Editor.h"
 #include "EditorViewportClient.h"
-#include "EditorLevelViewportClient.h"
+#include "LevelEditorViewport.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
