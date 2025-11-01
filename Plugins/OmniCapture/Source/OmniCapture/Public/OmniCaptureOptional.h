@@ -1,7 +1,10 @@
 #pragma once
 
 #if defined(__has_include)
-#if __has_include("Templates/Optional.h")
+#if __has_include("Misc/Optional.h")
+#include "Misc/Optional.h"
+#define OMNICAPTURE_HAS_TOPTIONAL 1
+#elif __has_include("Templates/Optional.h")
 #include "Templates/Optional.h"
 #define OMNICAPTURE_HAS_TOPTIONAL 1
 #elif __has_include("Containers/Optional.h")
