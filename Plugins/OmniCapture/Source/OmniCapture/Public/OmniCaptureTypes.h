@@ -278,6 +278,7 @@ struct OMNICAPTURE_API FOmniCaptureSettings
         bool IsCylindrical() const;
         bool IsFullDome() const;
         bool IsSphericalMirror() const;
+        bool SupportsSphericalMetadata() const;
         bool UseDualFisheyeLayout() const;
         bool ShouldConvertFisheyeToEquirect() const;
         FString GetStereoModeMetadataTag() const;

@@ -361,6 +361,11 @@ bool FOmniCaptureMuxer::WriteSpatialMetadata(const FOmniCaptureSettings& Setting
         return true;
     }
 
+    if (!Settings.SupportsSphericalMetadata())
+    {
+        return true;
+    }
+
     const FIntPoint OutputSize = Settings.GetOutputResolution();
     if (OutputSize.X <= 0 || OutputSize.Y <= 0)
     {
@@ -559,7 +564,7 @@ bool FOmniCaptureMuxer::TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, co
         CommandLine += TEXT(" -c:v copy");
     }
 
-    if (Settings.bInjectFFmpegMetadata)
+    if (Settings.bInjectFFmpegMetadata && Settings.SupportsSphericalMetadata())
     {
         FString MetadataArgs = FString::Printf(TEXT(" -metadata:s:v:0 spherical_video=1 -metadata:s:v:0 projection=equirectangular -metadata:s:v:0 stereo_mode=%s"), StereoMode);
         MetadataArgs += TEXT(" -metadata:s:v:0 spatial_audio=0 -metadata:s:v:0 stitching_software=OmniCapture");

@@ -132,6 +132,7 @@ private:
     void ApplyImageFormat(EOmniCaptureImageFormat Format);
     void ApplyPNGBitDepth(EOmniCapturePNGBitDepth BitDepth);
     void ApplyMetadataToggle(EMetadataToggle Toggle, bool bEnabled);
+    bool IsSphericalMetadataSupported() const;
 
     ECheckBoxState GetVRModeCheckState(bool bVR180) const;
     void HandleVRModeChanged(ECheckBoxState NewState, bool bVR180);
