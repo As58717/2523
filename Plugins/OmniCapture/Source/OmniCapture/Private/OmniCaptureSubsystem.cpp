@@ -1105,11 +1105,19 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
         }
         OutputMuxer->EndRealtimeSession();
 
+        const bool bExpectMuxedVideo = SegmentSettings.OutputFormat == EOmniOutputFormat::NVENCHardware;
         const FString FinalVideoPath = Segment.Directory / (Segment.BaseFileName + TEXT(".mp4"));
-        LastFinalizedOutput = FinalVideoPath;
-        if (!FinalVideoPath.IsEmpty())
+        if (bExpectMuxedVideo)
         {
-            AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Muxed output ready: %s"), *FinalVideoPath), TEXT("FinalizeOutputs"));
+            if (FPaths::FileExists(FinalVideoPath))
+            {
+                LastFinalizedOutput = FinalVideoPath;
+                AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Muxed output ready: %s"), *FinalVideoPath), TEXT("FinalizeOutputs"));
+            }
+            else
+            {
+                AppendDiagnostic(EOmniCaptureDiagnosticLevel::Warning, FString::Printf(TEXT("Expected muxed output not found: %s"), *FinalVideoPath), TEXT("FinalizeOutputs"));
+            }
         }
 
         if (SegmentSettings.bOpenPreviewOnFinalize && !FinalVideoPath.IsEmpty())
