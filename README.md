@@ -25,6 +25,12 @@ Switch projections in the OmniCapture control panel—the panel automatically ex
 
 The subsystem can toggle critical rendering tech before capture starts and restores the original engine settings afterward. Enabling options such as Ray Tracing, Path Tracing, Lumen, DLSS, Bloom, and anti-aliasing is as simple as flipping booleans on the capture settings struct, which makes it painless to align with high-end Movie Render Queue passes. 【F:Plugins/OmniCapture/Source/OmniCapture/Public/OmniCaptureTypes.h†L61-L88】【F:Plugins/OmniCapture/Source/OmniCapture/Private/OmniCaptureSubsystem.cpp†L1018-L1237】
 
+## Gamma & color consistency
+
+Color-managed captures help the recorded footage match the in-editor viewport. Choose between **sRGB** and **linear** gamma responses on each capture asset, which controls whether the rig samples the tonemapped buffer or the untouched HDR buffer and sets render target gamma accordingly. 【F:Plugins/OmniCapture/Source/OmniCapture/Public/OmniCaptureTypes.h†L61-L107】【F:Plugins/OmniCapture/Source/OmniCapture/Private/OmniCaptureRigActor.cpp†L279-L310】
+
+When encoding to NVENC or writing BGRA buffers, the compute shader applies the appropriate gamma curve before packing pixels so the exported frames maintain the expected color space. 【F:Plugins/OmniCapture/Shaders/Private/OmniColorConvertCS.usf†L11-L137】
+
 ## Image export formats
 
 OmniCapture exports linear or sRGB frames to **PNG**, **JPEG**, **EXR**, and **BMP** sequences. The PNG writer exposes 8-bit, 16-bit, and 32-bit color depth controls so you can balance fidelity and disk footprint per deliverable, the EXR path preserves the floating-point payload for alpha/stencil workflows, while the BMP exporter helps teams that require legacy offline review tools. 【F:Plugins/OmniCapture/Source/OmniCapture/Private/OmniCaptureImageWriter.cpp†L398-L545】【F:Plugins/OmniCapture/Source/OmniCaptureEditor/Private/SOmniCaptureControlPanel.cpp†L120-L279】

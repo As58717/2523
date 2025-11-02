@@ -297,8 +297,10 @@ void AOmniCaptureRigActor::ConfigureCaptureComponent(USceneCaptureComponent2D* C
         : PF_FloatRGBA;
     const int32 SizeX = FMath::Max(2, TargetSize.X);
     const int32 SizeY = FMath::Max(2, TargetSize.Y);
-    RenderTarget->InitCustomFormat(SizeX, SizeY, PixelFormat, false);
+    const bool bForceLinearGamma = bWantsLinearOutput;
+    RenderTarget->InitCustomFormat(SizeX, SizeY, PixelFormat, bForceLinearGamma);
     RenderTarget->TargetGamma = CachedSettings.Gamma == EOmniCaptureGamma::Linear ? 1.0f : 2.2f;
+    RenderTarget->bForceLinearGamma = bForceLinearGamma;
     RenderTarget->bAutoGenerateMips = false;
     RenderTarget->ClearColor = FLinearColor::Black;
     RenderTarget->Filter = TF_Bilinear;
@@ -336,8 +338,9 @@ USceneCaptureComponent2D* AOmniCaptureRigActor::CreateAuxiliaryCaptureComponent(
 
     const int32 SizeX = FMath::Max(2, TargetSize.X);
     const int32 SizeY = FMath::Max(2, TargetSize.Y);
-    RenderTarget->InitCustomFormat(SizeX, SizeY, Config.PixelFormat, false);
+    RenderTarget->InitCustomFormat(SizeX, SizeY, Config.PixelFormat, Config.bLinearTarget);
     RenderTarget->TargetGamma = Config.bLinearTarget ? 1.0f : 2.2f;
+    RenderTarget->bForceLinearGamma = Config.bLinearTarget;
     RenderTarget->bAutoGenerateMips = false;
     RenderTarget->ClearColor = Config.ClearColor;
     RenderTarget->Filter = TF_Bilinear;
