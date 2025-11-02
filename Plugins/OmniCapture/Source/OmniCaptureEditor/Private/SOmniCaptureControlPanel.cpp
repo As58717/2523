@@ -5,6 +5,7 @@
 #include "EditorViewportClient.h"
 #include "LevelEditorViewport.h"
 #include "Framework/Application/SlateApplication.h"
+#include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "IDesktopPlatform.h"
@@ -2188,7 +2189,7 @@ TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateDiagnosticRow(TSharedPtr
                                 *Item->RelativeTime.ToString(),
                                 *Item->Step.ToString(),
                                 *Item->Message.ToString());
-                            FSlateApplication::Get().SetClipboardText(Combined);
+                            FPlatformApplicationMisc::ClipboardCopy(*Combined);
                         }
                         return FReply::Handled();
                     })
