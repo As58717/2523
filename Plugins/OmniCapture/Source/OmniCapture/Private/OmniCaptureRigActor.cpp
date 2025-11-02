@@ -276,8 +276,13 @@ void AOmniCaptureRigActor::ConfigureCaptureComponent(USceneCaptureComponent2D* C
         return;
     }
 
+    // sRGB captures should include the same tonemapping as the viewport, while
+    // linear captures keep the HDR buffer untouched for downstream processing.
+    const bool bWantsLinearOutput = CachedSettings.Gamma == EOmniCaptureGamma::Linear;
     CaptureComponent->FOVAngle = 90.0f;
-    CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalColorHDR;
+    CaptureComponent->CaptureSource = bWantsLinearOutput
+        ? ESceneCaptureSource::SCS_FinalColorHDR
+        : ESceneCaptureSource::SCS_FinalColorLDR;
     CaptureComponent->bCaptureEveryFrame = false;
     CaptureComponent->bCaptureOnMovement = false;
     CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_RenderScenePrimitives;
