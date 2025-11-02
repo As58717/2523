@@ -215,7 +215,12 @@ bool FOmniCaptureMuxer::FinalizeCapture(const FOmniCaptureSettings& Settings, co
         bSuccess = false;
     }
 
-    TryInvokeFFmpeg(Settings, Frames, AudioPath, VideoPath);
+    const bool bMuxedVideo = TryInvokeFFmpeg(Settings, Frames, AudioPath, VideoPath);
+    if (!bMuxedVideo && Settings.OutputFormat == EOmniOutputFormat::NVENCHardware)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Failed to mux OmniCapture output – no MP4 will be produced."));
+        bSuccess = false;
+    }
     return bSuccess;
 }
 
