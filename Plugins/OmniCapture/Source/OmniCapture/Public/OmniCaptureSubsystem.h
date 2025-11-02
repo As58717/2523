@@ -7,6 +7,7 @@
 #include "OmniCaptureAudioRecorder.h"
 #include "OmniCaptureNVENCEncoder.h"
 #include "OmniCaptureMuxer.h"
+#include "Templates/Atomic.h"
 #include "Logging/LogVerbosity.h"
 #include "OmniCaptureOptional.h"
 #include "OmniCaptureSubsystem.generated.h"
@@ -26,6 +27,7 @@ struct FOmniCaptureSegmentRecord
     FString VideoPath;
     TArray<FOmniCaptureFrameMetadata> Frames;
     int32 DroppedFrames = 0;
+    bool bHasImageSequence = false;
 };
 
 UCLASS()
@@ -204,6 +206,11 @@ private:
     TUniquePtr<FOmniCaptureAudioRecorder> AudioRecorder;
     TUniquePtr<FOmniCaptureNVENCEncoder> NVENCEncoder;
     TUniquePtr<FOmniCaptureMuxer> OutputMuxer;
+
+    TAtomic<bool> bUsingNVENCImageFallback{ false };
+    bool bCapturedImageSequenceThisSegment = false;
+    bool bLastCaptureUsedImageSequenceFallback = false;
+    FString LastImageSequenceFallbackDirectory;
 
     TArray<FOmniCaptureFrameMetadata> CapturedFrameMetadata;
     TArray<FOmniCaptureSegmentRecord> CompletedSegments;

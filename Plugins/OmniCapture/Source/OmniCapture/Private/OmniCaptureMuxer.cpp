@@ -215,8 +215,8 @@ bool FOmniCaptureMuxer::FinalizeCapture(const FOmniCaptureSettings& Settings, co
         bSuccess = false;
     }
 
-    TryInvokeFFmpeg(Settings, Frames, AudioPath, VideoPath);
-    return bSuccess;
+    const bool bMuxed = TryInvokeFFmpeg(Settings, Frames, AudioPath, VideoPath);
+    return bSuccess && bMuxed;
 }
 
 bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, int32 DroppedFrames, FString& OutManifestPath) const
