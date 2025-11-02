@@ -22,6 +22,13 @@
 #endif
 #include "GenericPlatform/GenericPlatformDriver.h"
 #include "Interfaces/IPluginManager.h"
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include "Windows/PreWindowsApi.h"
+#include <windows.h>
+#include "Windows/PostWindowsApi.h"
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogOmniCaptureNVENC, Log, All);
 
@@ -153,6 +160,32 @@ namespace
         return Result;
     }
 
+#if PLATFORM_WINDOWS
+    FString GetSystem32DirectoryFromAPI()
+    {
+        TCHAR Buffer[MAX_PATH] = { 0 };
+        const UINT Length = ::GetSystemDirectory(Buffer, UE_ARRAY_COUNT(Buffer));
+        if (Length > 0 && Length < UE_ARRAY_COUNT(Buffer))
+        {
+            return NormalizePath(FString(Buffer));
+        }
+        return FString();
+    }
+
+    FString GetSysWow64DirectoryFromAPI()
+    {
+#if PLATFORM_64BITS
+        TCHAR Buffer[MAX_PATH] = { 0 };
+        const UINT Length = ::GetSystemWow64Directory(Buffer, UE_ARRAY_COUNT(Buffer));
+        if (Length > 0 && Length < UE_ARRAY_COUNT(Buffer))
+        {
+            return NormalizePath(FString(Buffer));
+        }
+#endif
+        return FString();
+    }
+#endif // PLATFORM_WINDOWS
+
 #if OMNI_WITH_AVENCODER && PLATFORM_WINDOWS
     void AddUniqueDirectory(TArray<FString>& Directories, const FString& Directory)
     {
@@ -233,7 +266,18 @@ namespace
             return FString();
         }
 
-        FString Candidate = FPaths::Combine(Directory, TEXT("nvEncodeAPI64.dll"));
+        const FString Normalized = NormalizePath(Directory);
+        if (Normalized.IsEmpty())
+        {
+            return FString();
+        }
+
+        if (FPaths::GetExtension(Normalized, true).Equals(TEXT(".dll"), ESearchCase::IgnoreCase))
+        {
+            return FPaths::FileExists(Normalized) ? Normalized : FString();
+        }
+
+        FString Candidate = FPaths::Combine(Normalized, TEXT("nvEncodeAPI64.dll"));
         FPaths::MakePlatformFilename(Candidate);
         return FPaths::FileExists(Candidate) ? Candidate : FString();
     }
@@ -259,6 +303,20 @@ namespace
             AddUniqueDirectory(CandidateDirectories, FPaths::Combine(SystemRoot, TEXT("System32")));
             AddUniqueDirectory(CandidateDirectories, FPaths::Combine(SystemRoot, TEXT("SysWOW64")));
         }
+
+#if PLATFORM_WINDOWS
+        const FString System32Directory = GetSystem32DirectoryFromAPI();
+        if (!System32Directory.IsEmpty())
+        {
+            AddUniqueDirectory(CandidateDirectories, System32Directory);
+        }
+
+        const FString SysWow64Directory = GetSysWow64DirectoryFromAPI();
+        if (!SysWow64Directory.IsEmpty())
+        {
+            AddUniqueDirectory(CandidateDirectories, SysWow64Directory);
+        }
+#endif
 
         for (const FString& Directory : CandidateDirectories)
         {
