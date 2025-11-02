@@ -1888,7 +1888,7 @@ void SOmniCaptureControlPanel::RefreshStatus()
         FpsFormat.SetMaximumFractionalDigits(2);
         const FText FrameText = FText::Format(LOCTEXT("FrameRateFormat", "Frame Rate: {0} FPS"), FText::AsNumber(CurrentFps, &FpsFormat));
         FrameRateTextBlock->SetText(FrameText);
-        FrameRateTextBlock->SetColorAndOpacity(Subsystem->IsPaused() ? FSlateColor(FLinearColor::Gray) : FSlateColor::UseForeground());
+        FrameRateTextBlock->SetForegroundColor(Subsystem->IsPaused() ? FSlateColor(FLinearColor::Gray) : FSlateColor::UseForeground());
     }
 
     const FOmniCaptureRingBufferStats RingStats = Subsystem->GetRingBufferStats();
@@ -1906,7 +1906,7 @@ void SOmniCaptureControlPanel::RefreshStatus()
         FText::FromString(MaxString),
         FText::AsNumber(AudioStats.PendingPackets));
     AudioTextBlock->SetText(AudioText);
-    AudioTextBlock->SetColorAndOpacity(AudioStats.bInError ? FSlateColor(FLinearColor::Red) : FSlateColor::UseForeground());
+    AudioTextBlock->SetForegroundColor(AudioStats.bInError ? FSlateColor(FLinearColor::Red) : FSlateColor::UseForeground());
 
     UpdateOutputDirectoryDisplay();
     RebuildWarningList(Subsystem->GetActiveWarnings());
