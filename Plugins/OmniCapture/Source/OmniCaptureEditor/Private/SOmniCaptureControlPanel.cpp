@@ -5,7 +5,6 @@
 #include "EditorViewportClient.h"
 #include "LevelEditorViewport.h"
 #include "Framework/Application/SlateApplication.h"
-#include "GenericPlatform/GenericApplication.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
@@ -2191,20 +2190,7 @@ TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateDiagnosticRow(TSharedPtr
                                 *Item->Step.ToString(),
                                 *Item->Message.ToString());
 
-                            bool bCopied = false;
-                            if (FSlateApplication::IsInitialized())
-                            {
-                                if (TSharedPtr<FGenericApplication> PlatformApp = FSlateApplication::Get().GetPlatformApplication())
-                                {
-                                    PlatformApp->ClipboardCopy(*Combined);
-                                    bCopied = true;
-                                }
-                            }
-
-                            if (!bCopied)
-                            {
-                                FPlatformApplicationMisc::ClipboardCopy(*Combined);
-                            }
+                            FPlatformApplicationMisc::ClipboardCopy(*Combined);
                         }
                         return FReply::Handled();
                     })
