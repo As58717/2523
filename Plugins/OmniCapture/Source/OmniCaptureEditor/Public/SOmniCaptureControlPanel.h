@@ -218,8 +218,11 @@ private:
     TSharedRef<ITableRow> GenerateWarningRow(TSharedPtr<FString> Item, const TSharedRef<STableViewBase>& OwnerTable);
     TSharedRef<ITableRow> GenerateDiagnosticRow(TSharedPtr<FDiagnosticListItem> Item, const TSharedRef<STableViewBase>& OwnerTable);
     FSlateColor GetDiagnosticLevelColor(EOmniCaptureDiagnosticLevel Level) const;
+    static FString BuildDiagnosticEntryString(const FDiagnosticListItem& Item);
+    FReply OnCopyDiagnostics();
     FReply OnClearDiagnostics();
     bool CanClearDiagnostics() const;
+    bool CanCopyDiagnostics() const;
 
     void RefreshFeatureAvailability(bool bForceRefresh = false);
     bool IsAnyComboBoxOpen() const;

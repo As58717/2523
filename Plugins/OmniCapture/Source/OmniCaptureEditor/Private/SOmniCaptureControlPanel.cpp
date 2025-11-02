@@ -1471,6 +1471,16 @@ void SOmniCaptureControlPanel::Construct(const FArguments& InArgs)
                 + SHorizontalBox::Slot()
                 .AutoWidth()
                 .VAlign(VAlign_Center)
+                .Padding(0.f, 0.f, 4.f, 0.f)
+                [
+                    SNew(SButton)
+                    .Text(LOCTEXT("CopyDiagnostics", "Copy Log"))
+                    .OnClicked(this, &SOmniCaptureControlPanel::OnCopyDiagnostics)
+                    .IsEnabled(this, &SOmniCaptureControlPanel::CanCopyDiagnostics)
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
                 [
                     SNew(SButton)
                     .Text(LOCTEXT("ClearDiagnostics", "Clear Log"))
@@ -2184,12 +2194,7 @@ TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateDiagnosticRow(TSharedPtr
                     {
                         if (Item.IsValid())
                         {
-                            const FString Combined = FString::Printf(TEXT("%s %s %s %s"),
-                                *Item->Timestamp.ToString(),
-                                *Item->RelativeTime.ToString(),
-                                *Item->Step.ToString(),
-                                *Item->Message.ToString());
-
+                            const FString Combined = SOmniCaptureControlPanel::BuildDiagnosticEntryString(*Item);
                             FPlatformApplicationMisc::ClipboardCopy(*Combined);
                         }
                         return FReply::Handled();
@@ -2202,6 +2207,15 @@ TSharedRef<ITableRow> SOmniCaptureControlPanel::GenerateDiagnosticRow(TSharedPtr
                 ]
             ]
         ];
+}
+
+FString SOmniCaptureControlPanel::BuildDiagnosticEntryString(const FDiagnosticListItem& Item)
+{
+    return FString::Printf(TEXT("%s %s %s %s"),
+        *Item.Timestamp.ToString(),
+        *Item.RelativeTime.ToString(),
+        *Item.Step.ToString(),
+        *Item.Message.ToString());
 }
 
 FSlateColor SOmniCaptureControlPanel::GetDiagnosticLevelColor(EOmniCaptureDiagnosticLevel Level) const
@@ -2217,6 +2231,35 @@ FSlateColor SOmniCaptureControlPanel::GetDiagnosticLevelColor(EOmniCaptureDiagno
     }
 }
 
+FReply SOmniCaptureControlPanel::OnCopyDiagnostics()
+{
+    if (!bHasDiagnostics)
+    {
+        return FReply::Handled();
+    }
+
+    TArray<FString> CombinedEntries;
+    CombinedEntries.Reserve(DiagnosticItems.Num());
+
+    for (const TSharedPtr<FDiagnosticListItem>& Item : DiagnosticItems)
+    {
+        if (!Item.IsValid() || Item->bIsPlaceholder)
+        {
+            continue;
+        }
+
+        CombinedEntries.Add(BuildDiagnosticEntryString(*Item));
+    }
+
+    if (CombinedEntries.Num() > 0)
+    {
+        const FString CombinedText = FString::Join(CombinedEntries, TEXT("\n"));
+        FPlatformApplicationMisc::ClipboardCopy(*CombinedText);
+    }
+
+    return FReply::Handled();
+}
+
 FReply SOmniCaptureControlPanel::OnClearDiagnostics()
 {
     if (UOmniCaptureSubsystem* Subsystem = GetSubsystem())
@@ -2230,6 +2273,11 @@ FReply SOmniCaptureControlPanel::OnClearDiagnostics()
 }
 
 bool SOmniCaptureControlPanel::CanClearDiagnostics() const
+{
+    return bHasDiagnostics;
+}
+
+bool SOmniCaptureControlPanel::CanCopyDiagnostics() const
 {
     return bHasDiagnostics;
 }
