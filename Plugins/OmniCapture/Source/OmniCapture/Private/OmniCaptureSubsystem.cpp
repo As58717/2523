@@ -180,6 +180,10 @@ void UOmniCaptureSubsystem::RecordCaptureCompletion(bool bFinalizeOutputs)
         {
             OutputDetail = FString::Printf(TEXT("Final output: %s"), *LastFinalizedOutput);
         }
+        else if (bLastCaptureUsedImageSequenceFallback && !LastImageSequenceFallbackDirectory.IsEmpty())
+        {
+            OutputDetail = FString::Printf(TEXT("Image sequence stored in %s"), *LastImageSequenceFallbackDirectory);
+        }
         else if (ActiveSettings.OutputFormat == EOmniOutputFormat::ImageSequence)
         {
             OutputDetail = FString::Printf(TEXT("Image sequence stored in %s"), *ActiveSettings.OutputDirectory);
@@ -285,6 +289,10 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     LastFinalizedOutput.Empty();
     LastStillImagePath.Empty();
     OutputMuxer.Reset();
+    bUsingNVENCImageFallback.Store(false);
+    bCapturedImageSequenceThisSegment = false;
+    bLastCaptureUsedImageSequenceFallback = false;
+    LastImageSequenceFallbackDirectory.Reset();
 
     ActiveWarnings.Empty();
     LatestRingBufferStats = FOmniCaptureRingBufferStats();
@@ -427,6 +435,11 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
             if (NVENCEncoder)
             {
                 NVENCEncoder->EnqueueFrame(*Frame);
+            }
+            if (bUsingNVENCImageFallback.Load() && ImageWriter && Frame.IsValid())
+            {
+                const FString FileName = BuildFrameFileName(Frame->Metadata.FrameIndex, ActiveSettings.GetImageFileExtension());
+                ImageWriter->EnqueueFrame(MoveTemp(Frame), FileName);
             }
             break;
         default:
@@ -998,6 +1011,7 @@ void UOmniCaptureSubsystem::DestroyPreviewActor()
 void UOmniCaptureSubsystem::InitializeOutputWriters()
 {
     RecordedVideoPath.Reset();
+    bUsingNVENCImageFallback.Store(false);
 
     switch (ActiveSettings.OutputFormat)
     {
@@ -1019,6 +1033,14 @@ void UOmniCaptureSubsystem::InitializeOutputWriters()
             const FString NvencError = NVENCEncoder->GetLastError().IsEmpty() ? TEXT("NVENC encoder failed to initialize.") : NVENCEncoder->GetLastError();
             LogDiagnosticMessage(ELogVerbosity::Error, TEXT("InitializeOutputs"), NvencError);
         }
+
+        if (ActiveSettings.bAllowNVENCFallback)
+        {
+            ImageWriter = MakeUnique<FOmniCaptureImageWriter>();
+            ImageWriter->Initialize(ActiveSettings, ActiveSettings.OutputDirectory);
+            bUsingNVENCImageFallback.Store(true);
+            AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, TEXT("Image sequence writer initialized for NVENC fallback."), TEXT("InitializeOutputs"));
+        }
         break;
     default:
         break;
@@ -1032,6 +1054,8 @@ void UOmniCaptureSubsystem::ShutdownOutputWriters(bool bFinalizeOutputs)
         ImageWriter->Flush();
         ImageWriter.Reset();
     }
+
+    bUsingNVENCImageFallback.Store(false);
 
     if (NVENCEncoder)
     {
@@ -1047,6 +1071,8 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
 {
     SetDiagnosticContext(TEXT("FinalizeOutputs"));
     AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Finalize outputs requested (Finalize=%s)."), bFinalizeOutputs ? TEXT("true") : TEXT("false")), TEXT("FinalizeOutputs"));
+    bLastCaptureUsedImageSequenceFallback = false;
+    LastImageSequenceFallbackDirectory.Reset();
 
     if (!bFinalizeOutputs)
     {
@@ -1099,22 +1125,42 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
         OutputMuxer->BeginRealtimeSession(SegmentSettings);
 
         const bool bSuccess = OutputMuxer->FinalizeCapture(SegmentSettings, Segment.Frames, Segment.AudioPath, Segment.VideoPath, Segment.DroppedFrames);
-        if (!bSuccess)
-        {
-            LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), FString::Printf(TEXT("Output muxing failed for segment %d. Check OmniCapture manifest for details."), Segment.SegmentIndex));
-        }
         OutputMuxer->EndRealtimeSession();
 
         const FString FinalVideoPath = Segment.Directory / (Segment.BaseFileName + TEXT(".mp4"));
-        LastFinalizedOutput = FinalVideoPath;
-        if (!FinalVideoPath.IsEmpty())
+        const bool bFinalFileExists = FPaths::FileExists(FinalVideoPath);
+
+        if (!bSuccess || !bFinalFileExists)
         {
-            AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Muxed output ready: %s"), *FinalVideoPath), TEXT("FinalizeOutputs"));
+            LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), FString::Printf(TEXT("Output muxing failed for segment %d. Check OmniCapture manifest for details."), Segment.SegmentIndex));
+            if (Segment.bHasImageSequence)
+            {
+                LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), FString::Printf(TEXT("Image sequence frames saved to %s with base name %s."), *Segment.Directory, *Segment.BaseFileName));
+                if (LastImageSequenceFallbackDirectory.IsEmpty())
+                {
+                    LastImageSequenceFallbackDirectory = Segment.Directory;
+                }
+                bLastCaptureUsedImageSequenceFallback = true;
+            }
+            else
+            {
+                LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), TEXT("No image sequence fallback was recorded for this segment."));
+            }
+        }
+        else if (Segment.bHasImageSequence && ActiveSettings.OutputFormat == EOmniOutputFormat::NVENCHardware)
+        {
+            AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Image sequence fallback saved alongside NVENC output in %s."), *Segment.Directory), TEXT("FinalizeOutputs"));
         }
 
-        if (SegmentSettings.bOpenPreviewOnFinalize && !FinalVideoPath.IsEmpty())
+        LastFinalizedOutput = (bSuccess && bFinalFileExists) ? FinalVideoPath : FString();
+        if (!LastFinalizedOutput.IsEmpty())
         {
-            FPlatformProcess::LaunchFileInDefaultExternalApplication(*FinalVideoPath);
+            AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Muxed output ready: %s"), *LastFinalizedOutput), TEXT("FinalizeOutputs"));
+        }
+
+        if (SegmentSettings.bOpenPreviewOnFinalize && !LastFinalizedOutput.IsEmpty())
+        {
+            FPlatformProcess::LaunchFileInDefaultExternalApplication(*LastFinalizedOutput);
         }
     }
 
@@ -1581,6 +1627,11 @@ void UOmniCaptureSubsystem::CaptureFrame()
 
     CapturedFrameMetadata.Add(Frame->Metadata);
 
+    if (ImageWriter && (ActiveSettings.OutputFormat == EOmniOutputFormat::ImageSequence || bUsingNVENCImageFallback.Load()))
+    {
+        bCapturedImageSequenceThisSegment = true;
+    }
+
     RingBuffer->Enqueue(MoveTemp(Frame));
 
     if (RingBuffer)
@@ -1903,6 +1954,7 @@ void UOmniCaptureSubsystem::ConfigureActiveSegment()
     CapturedFrameMetadata.Empty();
     RecordedAudioPath.Reset();
     RecordedVideoPath.Reset();
+    bCapturedImageSequenceThisSegment = false;
 
     CurrentSegmentStartTime = FPlatformTime::Seconds();
     LastSegmentSizeCheckTime = CurrentSegmentStartTime;
@@ -2002,6 +2054,7 @@ void UOmniCaptureSubsystem::CompleteActiveSegment(bool bStoreResults)
         CapturedFrameMetadata.Empty();
         RecordedAudioPath.Reset();
         RecordedVideoPath.Reset();
+        bCapturedImageSequenceThisSegment = false;
         return;
     }
 
@@ -2010,6 +2063,7 @@ void UOmniCaptureSubsystem::CompleteActiveSegment(bool bStoreResults)
         CapturedFrameMetadata.Empty();
         RecordedAudioPath.Reset();
         RecordedVideoPath.Reset();
+        bCapturedImageSequenceThisSegment = false;
         return;
     }
 
@@ -2024,12 +2078,14 @@ void UOmniCaptureSubsystem::CompleteActiveSegment(bool bStoreResults)
     SegmentRecord.DroppedFrames = SegmentDroppedFrames;
     RecordedSegmentDroppedFrames = TotalDroppedFrames;
     SegmentRecord.Frames = MoveTemp(CapturedFrameMetadata);
+    SegmentRecord.bHasImageSequence = bCapturedImageSequenceThisSegment || ActiveSettings.OutputFormat == EOmniOutputFormat::ImageSequence;
 
     CompletedSegments.Add(MoveTemp(SegmentRecord));
 
     CapturedFrameMetadata.Reset();
     RecordedAudioPath.Reset();
     RecordedVideoPath.Reset();
+    bCapturedImageSequenceThisSegment = false;
 }
 
 int64 UOmniCaptureSubsystem::CalculateActiveSegmentSizeBytes() const
