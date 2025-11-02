@@ -294,6 +294,7 @@ void UOmniCaptureSubsystem::BeginCapture(const FOmniCaptureSettings& InSettings)
     bIsPaused = false;
     bDroppedFrames = false;
     DroppedFrameCount = 0;
+    RecordedSegmentDroppedFrames = 0;
     CurrentCaptureFPS = 0.0;
     LastFpsSampleTime = 0.0;
     FramesSinceLastFpsSample = 0;
@@ -1056,6 +1057,7 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
         LastFinalizedOutput.Empty();
         LastStillImagePath.Empty();
         OutputMuxer.Reset();
+        RecordedSegmentDroppedFrames = 0;
         return;
     }
 
@@ -1096,7 +1098,7 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
         OutputMuxer->Initialize(SegmentSettings, Segment.Directory);
         OutputMuxer->BeginRealtimeSession(SegmentSettings);
 
-        const bool bSuccess = OutputMuxer->FinalizeCapture(SegmentSettings, Segment.Frames, Segment.AudioPath, Segment.VideoPath);
+        const bool bSuccess = OutputMuxer->FinalizeCapture(SegmentSettings, Segment.Frames, Segment.AudioPath, Segment.VideoPath, Segment.DroppedFrames);
         if (!bSuccess)
         {
             LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), FString::Printf(TEXT("Output muxing failed for segment %d. Check OmniCapture manifest for details."), Segment.SegmentIndex));
@@ -1121,6 +1123,7 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
     RecordedAudioPath.Reset();
     RecordedVideoPath.Reset();
     OutputMuxer.Reset();
+    RecordedSegmentDroppedFrames = 0;
 }
 
 bool UOmniCaptureSubsystem::ValidateEnvironment()
@@ -2016,6 +2019,10 @@ void UOmniCaptureSubsystem::CompleteActiveSegment(bool bStoreResults)
     SegmentRecord.BaseFileName = ActiveSettings.OutputFileName;
     SegmentRecord.AudioPath = RecordedAudioPath;
     SegmentRecord.VideoPath = RecordedVideoPath;
+    const int32 TotalDroppedFrames = DroppedFrameCount;
+    const int32 SegmentDroppedFrames = FMath::Max(0, TotalDroppedFrames - RecordedSegmentDroppedFrames);
+    SegmentRecord.DroppedFrames = SegmentDroppedFrames;
+    RecordedSegmentDroppedFrames = TotalDroppedFrames;
     SegmentRecord.Frames = MoveTemp(CapturedFrameMetadata);
 
     CompletedSegments.Add(MoveTemp(SegmentRecord));

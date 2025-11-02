@@ -25,6 +25,7 @@ struct FOmniCaptureSegmentRecord
     FString AudioPath;
     FString VideoPath;
     TArray<FOmniCaptureFrameMetadata> Frames;
+    int32 DroppedFrames = 0;
 };
 
 UCLASS()
@@ -173,6 +174,7 @@ private:
     bool bDroppedFrames = false;
 
     int32 DroppedFrameCount = 0;
+    int32 RecordedSegmentDroppedFrames = 0;
 
     int32 FrameCounter = 0;
     int32 CaptureAttemptCounter = 0;

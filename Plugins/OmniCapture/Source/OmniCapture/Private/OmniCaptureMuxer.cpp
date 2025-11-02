@@ -191,14 +191,14 @@ void FOmniCaptureMuxer::PushFrame(const FOmniCaptureFrame& Frame)
     AudioStats.bInError = FMath::Abs(AudioStats.DriftMilliseconds) > DriftWarningThresholdMs;
 }
 
-bool FOmniCaptureMuxer::FinalizeCapture(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath)
+bool FOmniCaptureMuxer::FinalizeCapture(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, int32 DroppedFrames)
 {
     bool bSuccess = true;
 
     if (Settings.bGenerateManifest)
     {
         FString ManifestPath;
-        if (WriteManifest(Settings, Frames, AudioPath, VideoPath, ManifestPath))
+        if (WriteManifest(Settings, Frames, AudioPath, VideoPath, DroppedFrames, ManifestPath))
         {
             UE_LOG(LogTemp, Log, TEXT("OmniCapture manifest written to %s"), *ManifestPath);
         }
@@ -219,7 +219,7 @@ bool FOmniCaptureMuxer::FinalizeCapture(const FOmniCaptureSettings& Settings, co
     return bSuccess;
 }
 
-bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, FString& OutManifestPath) const
+bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, int32 DroppedFrames, FString& OutManifestPath) const
 {
     TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 
@@ -237,6 +237,7 @@ bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, cons
     Root->SetNumberField(TEXT("resolution"), Settings.Resolution);
     Root->SetNumberField(TEXT("frameCount"), Frames.Num());
     Root->SetNumberField(TEXT("frameRate"), CalculateFrameRate(Frames));
+    Root->SetNumberField(TEXT("droppedFrames"), DroppedFrames);
     Root->SetStringField(TEXT("stereoLayout"), Settings.StereoLayout == EOmniCaptureStereoLayout::TopBottom ? TEXT("TopBottom") : TEXT("SideBySide"));
     const FIntPoint OutputSize = Settings.GetOutputResolution();
     Root->SetNumberField(TEXT("outputWidth"), OutputSize.X);

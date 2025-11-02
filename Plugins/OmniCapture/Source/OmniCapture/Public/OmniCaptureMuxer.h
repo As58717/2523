@@ -7,7 +7,7 @@ class OMNICAPTURE_API FOmniCaptureMuxer
 {
 public:
     void Initialize(const FOmniCaptureSettings& Settings, const FString& InOutputDirectory);
-    bool FinalizeCapture(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath);
+    bool FinalizeCapture(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, int32 DroppedFrames);
     void BeginRealtimeSession(const FOmniCaptureSettings& Settings);
     void EndRealtimeSession();
     void PushFrame(const FOmniCaptureFrame& Frame);
@@ -16,7 +16,7 @@ public:
     static bool IsFFmpegAvailable(const FOmniCaptureSettings& Settings, FString* OutResolvedPath = nullptr);
 
 private:
-    bool WriteManifest(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, FString& OutManifestPath) const;
+    bool WriteManifest(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, int32 DroppedFrames, FString& OutManifestPath) const;
     bool TryInvokeFFmpeg(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath) const;
     bool WriteSpatialMetadata(const FOmniCaptureSettings& Settings) const;
     FString BuildFFmpegBinaryPath() const;
