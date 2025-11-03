@@ -80,6 +80,16 @@ public class OmniCapture : ModuleRules
             });
 
             PrivateDefinitions.Add("WITH_OMNI_NVENC=1");
+
+            // Ensure the expected project binaries directory exists before the linker writes outputs.
+            if (Target.ProjectFile != null)
+            {
+                string projectBinariesDirectory = Path.Combine(Target.ProjectFile.Directory.FullName, "Binaries", "Win64");
+                if (!Directory.Exists(projectBinariesDirectory))
+                {
+                    Directory.CreateDirectory(projectBinariesDirectory);
+                }
+            }
         }
         else
         {
