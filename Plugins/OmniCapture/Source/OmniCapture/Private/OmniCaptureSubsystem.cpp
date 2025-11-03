@@ -1129,11 +1129,12 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
 
         const FString FinalVideoPath = Segment.Directory / (Segment.BaseFileName + TEXT(".mp4"));
         const bool bFinalFileExists = FPaths::FileExists(FinalVideoPath);
+        const bool bRequiresMuxedVideo = SegmentSettings.OutputFormat == EOmniOutputFormat::NVENCHardware;
 
-        if (!bSuccess || !bFinalFileExists)
+        if (!bSuccess || (bRequiresMuxedVideo && !bFinalFileExists))
         {
             LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), FString::Printf(TEXT("Output muxing failed for segment %d. Check OmniCapture manifest for details."), Segment.SegmentIndex));
-            if (Segment.bHasImageSequence)
+            if (Segment.bHasImageSequence && bRequiresMuxedVideo)
             {
                 LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), FString::Printf(TEXT("Image sequence frames saved to %s with base name %s."), *Segment.Directory, *Segment.BaseFileName));
                 if (LastImageSequenceFallbackDirectory.IsEmpty())
@@ -1142,7 +1143,7 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
                 }
                 bLastCaptureUsedImageSequenceFallback = true;
             }
-            else
+            else if (bRequiresMuxedVideo)
             {
                 LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"), TEXT("No image sequence fallback was recorded for this segment."));
             }
@@ -1152,7 +1153,8 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
             AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Image sequence fallback saved alongside NVENC output in %s."), *Segment.Directory), TEXT("FinalizeOutputs"));
         }
 
-        LastFinalizedOutput = (bSuccess && bFinalFileExists) ? FinalVideoPath : FString();
+        const bool bHasMuxedOutput = bSuccess && bFinalFileExists;
+        LastFinalizedOutput = bHasMuxedOutput ? FinalVideoPath : FString();
         if (!LastFinalizedOutput.IsEmpty())
         {
             AppendDiagnostic(EOmniCaptureDiagnosticLevel::Info, FString::Printf(TEXT("Muxed output ready: %s"), *LastFinalizedOutput), TEXT("FinalizeOutputs"));

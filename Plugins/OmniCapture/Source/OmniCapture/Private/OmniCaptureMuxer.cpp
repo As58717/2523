@@ -215,8 +215,20 @@ bool FOmniCaptureMuxer::FinalizeCapture(const FOmniCaptureSettings& Settings, co
         bSuccess = false;
     }
 
-    const bool bMuxed = TryInvokeFFmpeg(Settings, Frames, AudioPath, VideoPath);
-    return bSuccess && bMuxed;
+    const bool bSupportsMuxing = IsImageSequenceFormat(Settings.OutputFormat) || Settings.OutputFormat == EOmniOutputFormat::NVENCHardware;
+    bool bMuxed = true;
+
+    if (bSupportsMuxing)
+    {
+        bMuxed = TryInvokeFFmpeg(Settings, Frames, AudioPath, VideoPath);
+
+        if (Settings.OutputFormat == EOmniOutputFormat::NVENCHardware && !bMuxed)
+        {
+            bSuccess = false;
+        }
+    }
+
+    return bSuccess && (bMuxed || Settings.OutputFormat != EOmniOutputFormat::NVENCHardware);
 }
 
 bool FOmniCaptureMuxer::WriteManifest(const FOmniCaptureSettings& Settings, const TArray<FOmniCaptureFrameMetadata>& Frames, const FString& AudioPath, const FString& VideoPath, int32 DroppedFrames, FString& OutManifestPath) const
