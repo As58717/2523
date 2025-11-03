@@ -32,8 +32,8 @@ float3 DirectionFromEquirect(uint2 Pixel, float2 EyeRes, out float Latitude)
 
     float3 Dir;
     Dir.x = CosLat * CosLon;
-    Dir.y = SinLat;
-    Dir.z = CosLat * SinLon;
+    Dir.y = CosLat * SinLon;
+    Dir.z = SinLat;
     return normalize(Dir);
 }
 
@@ -140,7 +140,7 @@ void MainCS(uint3 DispatchThreadID : SV_DispatchThreadID)
         float Blend = PoleFactor * PolarStrength;
         if (Blend > 0.0f)
         {
-            float3 PoleVector = float3(0.0f, Latitude >= 0.0f ? 1.0f : -1.0f, 0.0f);
+            float3 PoleVector = float3(0.0f, 0.0f, Latitude >= 0.0f ? 1.0f : -1.0f);
             Direction = normalize(lerp(Direction, PoleVector, Blend));
         }
     }

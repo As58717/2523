@@ -334,8 +334,8 @@ namespace
 
         FVector Direction;
         Direction.X = CosLat * CosLon;
-        Direction.Y = SinLat;
-        Direction.Z = CosLat * SinLon;
+        Direction.Y = CosLat * SinLon;
+        Direction.Z = SinLat;
         return Direction.GetSafeNormal();
     }
 
@@ -456,7 +456,7 @@ namespace
             return;
         }
 
-        const FVector PoleVector(0.0f, Latitude >= 0.0f ? 1.0f : -1.0f, 0.0f);
+        const FVector PoleVector(0.0f, 0.0f, Latitude >= 0.0f ? 1.0f : -1.0f);
         Direction = FVector(FMath::Lerp(Direction.X, PoleVector.X, Blend),
             FMath::Lerp(Direction.Y, PoleVector.Y, Blend),
             FMath::Lerp(Direction.Z, PoleVector.Z, Blend));
