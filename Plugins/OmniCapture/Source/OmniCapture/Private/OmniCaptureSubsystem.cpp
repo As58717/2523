@@ -1121,6 +1121,34 @@ void UOmniCaptureSubsystem::FinalizeOutputs(bool bFinalizeOutputs)
         SegmentSettings.OutputDirectory = Segment.Directory;
         SegmentSettings.OutputFileName = Segment.BaseFileName;
 
+        const bool bOriginallyNVENC = SegmentSettings.OutputFormat == EOmniOutputFormat::NVENCHardware;
+        const bool bHasNVENCBitstream = !Segment.VideoPath.IsEmpty();
+        if (bOriginallyNVENC && !bHasNVENCBitstream)
+        {
+            if (Segment.bHasImageSequence)
+            {
+                LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"),
+                    FString::Printf(TEXT("NVENC hardware output missing for segment %d. Using image sequence fallback stored in %s."),
+                        Segment.SegmentIndex,
+                        *Segment.Directory));
+
+                if (LastImageSequenceFallbackDirectory.IsEmpty())
+                {
+                    LastImageSequenceFallbackDirectory = Segment.Directory;
+                }
+
+                bLastCaptureUsedImageSequenceFallback = true;
+                SegmentSettings.OutputFormat = EOmniOutputFormat::ImageSequence;
+            }
+            else
+            {
+                LogDiagnosticMessage(ELogVerbosity::Warning, TEXT("FinalizeOutputs"),
+                    FString::Printf(TEXT("NVENC hardware output missing for segment %d and no image sequence fallback was recorded."),
+                        Segment.SegmentIndex));
+                continue;
+            }
+        }
+
         OutputMuxer->Initialize(SegmentSettings, Segment.Directory);
         OutputMuxer->BeginRealtimeSession(SegmentSettings);
 
