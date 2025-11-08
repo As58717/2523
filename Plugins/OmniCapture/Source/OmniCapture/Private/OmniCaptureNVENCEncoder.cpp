@@ -387,22 +387,18 @@ namespace
 #else
     FString DetectAVEncoderModuleDirectory()
     {
-        if (!GetAutoDetectModuleAttempted())
-        {
-            GetAutoDetectModuleAttempted() = true;
-            GetAutoDetectedModulePath().Reset();
-        }
-        return GetAutoDetectedModulePath();
+        GetAutoDetectModuleAttempted() = true;
+        FString& CachedPath = GetAutoDetectedModulePath();
+        CachedPath.Reset();
+        return CachedPath;
     }
 
     FString DetectNVENCDllPath()
     {
-        if (!GetAutoDetectDllAttempted())
-        {
-            GetAutoDetectDllAttempted() = true;
-            GetAutoDetectedDllPath().Reset();
-        }
-        return GetAutoDetectedDllPath();
+        GetAutoDetectDllAttempted() = true;
+        FString& CachedPath = GetAutoDetectedDllPath();
+        CachedPath.Reset();
+        return CachedPath;
     }
 #endif // OMNI_WITH_AVENCODER && PLATFORM_WINDOWS
 
