@@ -58,6 +58,56 @@
     #define OMNI_WITH_AVENCODER 0
 #endif
 
+#if OMNI_WITH_AVENCODER
+    // The NVENC capability helpers moved a few times between engine releases. Try to locate
+    // whichever layout is available so we can alias a consistent namespace for the call sites.
+    #if __has_include("AVEncoder/Public/Video/Encoders/NVENC/NVENCCommon.h")
+        #include "AVEncoder/Public/Video/Encoders/NVENC/NVENCCommon.h"
+        namespace OmniNVENC = OmniAVEncoder::NVENC;
+        #define OMNI_WITH_NVENC_CAPABILITIES 1
+        #define OMNI_DEFINED_NVENC_NAMESPACE 1
+    #elif __has_include("AVEncoder/Public/Video/Encoders/Nvenc/NvencCommon.h")
+        #include "AVEncoder/Public/Video/Encoders/Nvenc/NvencCommon.h"
+        namespace OmniNVENC = OmniAVEncoder::NVENC;
+        #define OMNI_WITH_NVENC_CAPABILITIES 1
+        #define OMNI_DEFINED_NVENC_NAMESPACE 1
+    #elif __has_include("AVEncoder/NVENCCommon.h")
+        #include "AVEncoder/NVENCCommon.h"
+        namespace OmniNVENC = OmniAVEncoder;
+        #define OMNI_WITH_NVENC_CAPABILITIES 1
+        #define OMNI_DEFINED_NVENC_NAMESPACE 1
+    #elif __has_include("AVEncoder/NvencCommon.h")
+        #include "AVEncoder/NvencCommon.h"
+        namespace OmniNVENC = OmniAVEncoder;
+        #define OMNI_WITH_NVENC_CAPABILITIES 1
+        #define OMNI_DEFINED_NVENC_NAMESPACE 1
+    #elif __has_include("AVEncoder/Public/NVENCCommon.h")
+        #include "AVEncoder/Public/NVENCCommon.h"
+        namespace OmniNVENC = OmniAVEncoder;
+        #define OMNI_WITH_NVENC_CAPABILITIES 1
+        #define OMNI_DEFINED_NVENC_NAMESPACE 1
+    #elif __has_include("AVEncoder/Public/NvencCommon.h")
+        #include "AVEncoder/Public/NvencCommon.h"
+        namespace OmniNVENC = OmniAVEncoder;
+        #define OMNI_WITH_NVENC_CAPABILITIES 1
+        #define OMNI_DEFINED_NVENC_NAMESPACE 1
+    #else
+        #define OMNI_WITH_NVENC_CAPABILITIES 0
+    #endif
+#endif
+
+#if !defined(OMNI_WITH_NVENC_CAPABILITIES)
+    #define OMNI_WITH_NVENC_CAPABILITIES 0
+#endif
+
+#if OMNI_WITH_AVENCODER && !defined(OMNI_DEFINED_NVENC_NAMESPACE)
+    namespace OmniNVENC = OmniAVEncoder;
+#endif
+
+#if defined(OMNI_DEFINED_NVENC_NAMESPACE)
+    #undef OMNI_DEFINED_NVENC_NAMESPACE
+#endif
+
 
 struct FOmniNVENCCapabilities
 {
