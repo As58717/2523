@@ -305,6 +305,8 @@ namespace
         }
 
 #if PLATFORM_WINDOWS
+        AddUniqueDirectory(CandidateDirectories, TEXT("C:/Windows/System32"));
+
         const FString System32Directory = GetSystem32DirectoryFromAPI();
         if (!System32Directory.IsEmpty())
         {
